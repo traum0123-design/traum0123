@@ -7,7 +7,7 @@
   <meta name="csrf-token" content="{{ csrf_token() }}">
   <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
 </head>
-<body data-api-base="{{ (API_BASE_URL or '') }}">
+<body>
   <header class="topbar">
     <div class="container flex between">
       <div class="brand">급여 포털</div>
@@ -49,28 +49,6 @@
   <script nonce="{{ csp_nonce() }}">
     (function(){
       try{ window.__CSRF__ = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); }catch(e){ }
-      try{
-        const body = document.body || document.getElementsByTagName('body')[0];
-        const apiBase = ((body && body.dataset ? body.dataset.apiBase : '') || '').trim();
-        window.API_BASE = apiBase;
-      }catch(_){ window.API_BASE = ''; }
-      try{ window.API_TOKEN = {{ (API_TOKEN or '') | tojson }}; }catch(e){ }
-      try{ window.ADMIN_TOKEN = {{ (ADMIN_TOKEN or '') | tojson }}; }catch(e){ }
-    })();
-  </script>
-  <script nonce="{{ csp_nonce() }}">
-    (function(){
-      const base = (window.API_BASE||'').trim();
-      if(!base) return;
-      const norm = (p)=> base.replace(/\/$/,'') + p;
-      document.addEventListener('DOMContentLoaded', function(){
-        document.querySelectorAll('form').forEach(function(f){
-          const a = (f.getAttribute('action')||'');
-          if(f.dataset && f.dataset.local === '1') return;
-          if(!a || (!a.startsWith('/admin/') && !a.startsWith('/portal/'))) return;
-          f.setAttribute('action', norm(a));
-        });
-      });
     })();
   </script>
 </body>

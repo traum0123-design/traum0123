@@ -5,10 +5,8 @@ from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import MonthlyPayroll
-
-from ..models import MonthlyPayrollRow
-from ..utils.dates import parse_date_flex
+from core.models import MonthlyPayroll, MonthlyPayrollRow
+from core.utils.dates import parse_date_flex
 
 
 def sync_normalized_rows(
@@ -86,4 +84,3 @@ def _to_bool(value) -> bool | None:
 
 def _to_date(value) -> dt.date | None:
     return parse_date_flex(value)
-

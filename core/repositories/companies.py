@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import Company
+from core.models import Company
 
 
 def get_by_slug(session: Session, slug: str) -> Optional[Company]:
@@ -21,4 +21,3 @@ def list_companies(session: Session) -> List[Company]:
         .order_by(Company.created_at.desc())
         .all()
     )
-

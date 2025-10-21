@@ -6,10 +6,10 @@ from typing import Optional
 from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
-from payroll_shared.models import Company
-from payroll_shared.settings import get_settings
+from core.models import Company
+from core.settings import get_settings
 
-from ..dao import companies as companies_dao
+from core.repositories import companies as companies_repo
 
 
 def verify_admin_password(password: str) -> bool:
@@ -45,8 +45,8 @@ def ensure_token_key(session: Session, company: Company) -> None:
 
 
 def find_company_by_slug(session: Session, slug: str) -> Optional[Company]:
-    return companies_dao.get_by_slug(session, slug)
+    return companies_repo.get_by_slug(session, slug)
 
 
 def find_company_by_id(session: Session, company_id: int) -> Optional[Company]:
-    return companies_dao.get_by_id(session, company_id)
+    return companies_repo.get_by_id(session, company_id)

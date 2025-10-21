@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import ExtraField
+from core.models import ExtraField
 
 
 def list_for_company(session: Session, company_id: int) -> List[ExtraField]:
@@ -36,4 +36,3 @@ def add(session: Session, field: ExtraField) -> ExtraField:
     session.add(field)
     session.flush()
     return field
-

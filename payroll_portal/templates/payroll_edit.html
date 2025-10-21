@@ -1631,7 +1631,7 @@ function gridInputChanged(el){
       }
       try{ usp.set('csrf_token', (window.__CSRF__||'')); }catch(_){ }
       const bodyStr = usp.toString();
-      const useBeacon = (!!navigator.sendBeacon) && !(window.API_BASE && String(window.API_BASE).trim());
+      const useBeacon = !!navigator.sendBeacon;
       if(useBeacon){
         const blob = new Blob([bodyStr], { type: 'application/x-www-form-urlencoded;charset=UTF-8' });
         navigator.sendBeacon(SAVE_URL, blob);

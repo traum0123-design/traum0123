@@ -1,0 +1,9 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+pydantic-settings
+python-multipart
+jinja2
+openpyxl
+itsdangerous
+redis

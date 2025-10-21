@@ -4,3 +4,7 @@ __pycache__/
 *.sqlite3
 *.db
 *.log
+.venv/
+payroll_portal/.venv/
+payroll_portal/#/
+payroll_portal/app.db

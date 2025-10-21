@@ -6,11 +6,10 @@ from typing import Optional
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
-from payroll_shared.fields import cleanup_duplicate_extra_fields
-from payroll_shared.models import Company, ExtraField
-
-from ..dao import extra_fields as extra_fields_dao
-from ..utils.locks import company_extra_field_lock
+from core.fields import cleanup_duplicate_extra_fields
+from core.locks import company_extra_field_lock
+from core.models import Company, ExtraField
+from core.repositories import extra_fields as extra_fields_repo
 
 
 def normalize_label(label: str) -> str:
@@ -36,13 +35,13 @@ def add_extra_field(
 
     with company_extra_field_lock(company.id, norm_label) as acquired:
         # Even if we could not acquire the lock, we try optimistic path
-        existing = extra_fields_dao.find_by_label(session, company.id, norm_label)
+        existing = extra_fields_repo.find_by_label(session, company.id, norm_label)
         if existing:
             return existing
 
         key = norm_label
         suffix = 1
-        while extra_fields_dao.find_by_name(session, company.id, key):
+        while extra_fields_repo.find_by_name(session, company.id, key):
             suffix += 1
             key = f"{norm_label}_{suffix}"
 
@@ -53,12 +52,11 @@ def add_extra_field(
             typ=typ,
         )
         try:
-            extra_fields_dao.add(session, field)
+            extra_fields_repo.add(session, field)
             session.commit()
         except IntegrityError:
             session.rollback()
             # Rerun cleanup in case of race and fetch existing
             cleanup_duplicate_extra_fields(session, company)
-            field = extra_fields_dao.find_by_label(session, company.id, norm_label)
+            field = extra_fields_repo.find_by_label(session, company.id, norm_label)
         return field
-

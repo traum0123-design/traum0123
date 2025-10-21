@@ -1,5 +1,3 @@
-"""Payroll portal package exposing Flask app factory."""
+"""Portal static assets and legacy helpers."""
 
-from .app import app, create_app  # noqa: F401
-
-__all__ = ["create_app", "app"]
+__all__ = []

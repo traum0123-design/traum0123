@@ -1,51 +1,23 @@
 // Global small UX helpers
 (function(){
-  // CSRF helper: attach token to fetch if header missing
+  // CSRF helper: attach token header when meta tag is present
   try{
-    const CSRF = window.__CSRF__ || (document.querySelector('meta[name="csrf-token"]').getAttribute('content'));
-    const body = document.body || document.getElementsByTagName('body')[0];
-    const API_BASE = (body && body.dataset ? (body.dataset.apiBase || '') : (window.API_BASE || '')).trim();
-    const SHOULD_REWRITE = API_BASE && API_BASE !== '' && API_BASE !== '/api';
-    const _fetch = window.fetch;
-    function rewriteApiUrl(u){
-      if(!SHOULD_REWRITE) return u;
-      try{
-        if(typeof u === 'string'){
-          if(/^\/api\//.test(u) || /^\/portal\/[\w%-]+\/api\//.test(u) || /^\/admin\/[\w%-]+\/api\//.test(u)){
-            return API_BASE.replace(/\/$/, '') + u;
-          }
-        }
-      }catch(_){ }
-      return u;
-    }
+    const meta = document.querySelector('meta[name="csrf-token"]');
+    if(!meta) return;
+    const csrf = (meta.getAttribute('content') || '').trim();
+    if(!csrf) return;
+    const originalFetch = window.fetch;
     window.fetch = function(input, init){
-      try{
-        init = init || {};
-        init.headers = init.headers || {};
-        if(typeof init.headers === 'object' && !init.headers['X-CSRF-Token']){
-          init.headers['X-CSRF-Token'] = CSRF;
-        }
-        // Attach API token for FastAPI auth if configured
-        try{
-          const tok = (window.API_TOKEN||'').trim();
-          const atok = (window.ADMIN_TOKEN||'').trim();
-          if(atok && (!init.headers['X-Admin-Token'])){ init.headers['X-Admin-Token'] = atok; }
-          if(tok && (!init.headers['X-API-Token'])){ init.headers['X-API-Token'] = tok; }
-          // Prefer admin token for /admin/ URLs, else company token
-          if(typeof input === 'string' && input.startsWith('/admin/') && atok){
-            if(!init.headers['Authorization']) init.headers['Authorization'] = 'Bearer ' + atok;
-          }else if(tok){
-            if(!init.headers['Authorization']) init.headers['Authorization'] = 'Bearer ' + tok;
-          }
-        }catch(_){ }
-      }catch(e){}
-      try{
-        if(typeof input === 'string') input = rewriteApiUrl(input);
-      }catch(_){ }
-      return _fetch(input, init);
+      init = init || {};
+      const headers = init.headers instanceof Headers ? init.headers : new Headers(init.headers || {});
+      if(!headers.has('X-CSRF-Token')){
+        headers.set('X-CSRF-Token', csrf);
+      }
+      init.headers = headers;
+      return originalFetch(input, init);
     };
   }catch(e){}
-
+})();
   // Client error collection (best-effort, no block)
   (function(){
     function send(payload){

@@ -5,13 +5,9 @@ from typing import Dict, Tuple
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import Company
+from core.models import Company
 
-from .payroll import (
-    build_columns_for_company,
-    insurance_settings,
-    load_field_prefs,
-)
+from .payroll import build_columns_for_company, compute_withholding_tax, insurance_settings, load_field_prefs
 
 DEDUCTION_FIELDS = {"국민연금", "건강보험", "장기요양보험", "고용보험", "소득세", "지방소득세"}
 
@@ -166,9 +162,7 @@ def compute_deductions(
 
     dependents = _to_int(row.get("부양가족수") or row.get("부양 가족수") or 1)
     wage = default_base
-    from ..services.payroll import compute_withholding_tax as _withholding  # local import to avoid cycle
-
-    income_tax = _withholding(session, year, dependents, wage)
+    income_tax = compute_withholding_tax(session, year, dependents, wage)
     local_tax = int(round((income_tax or 0) * 0.1))
 
     metadata = {

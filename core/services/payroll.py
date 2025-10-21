@@ -7,16 +7,17 @@ from typing import Dict, Iterable, List, Tuple
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import Company, ExtraField, FieldPref, MonthlyPayroll, WithholdingCell
-from payroll_shared.schema import (
+from core.models import Company, ExtraField, FieldPref, MonthlyPayroll, WithholdingCell
+from core.schema import (
     DEFAULT_BOOL_FIELDS,
     DEFAULT_COLUMNS,
     DEFAULT_DATE_FIELDS,
     DEFAULT_NUMERIC_FIELDS,
 )
 
+from core.utils.dates import parse_date_flex
+
 from .extra_fields import ensure_defaults, normalize_label
-from ..utils.dates import parse_date_flex
 
 
 def _env_float(key: str, default: float | None) -> float | None:

@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from flask import Request
+from starlette.requests import Request
 
-from payroll_shared.rate_limit import get_admin_rate_limiter
+from core.rate_limit import get_admin_rate_limiter
 
 
 def client_ip(request: Request) -> str:
@@ -22,4 +22,3 @@ def portal_login_key(request: Request, slug: str) -> str:
 
 def limiter():
     return get_admin_rate_limiter()
-

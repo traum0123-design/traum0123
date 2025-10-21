@@ -4,7 +4,7 @@ from typing import List, Optional
 
 from sqlalchemy.orm import Session
 
-from payroll_shared.models import MonthlyPayroll, WithholdingCell
+from core.models import MonthlyPayroll, WithholdingCell
 
 
 def list_for_year(session: Session, company_id: int, year: int) -> List[MonthlyPayroll]:
@@ -49,4 +49,3 @@ def latest_withholding(
         .order_by(WithholdingCell.wage.desc())
         .first()
     )
-

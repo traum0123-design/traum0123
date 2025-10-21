@@ -5,21 +5,59 @@ from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import FastAPI, Depends, Query, HTTPException, Request, UploadFile, File, Form
+from fastapi import APIRouter, Body, FastAPI, Cookie, Depends, Query, HTTPException, Request, UploadFile, File, Form
+from fastapi.exceptions import RequestValidationError
+from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
 from .database import engine, get_db
-from payroll_shared.models import Base, Company, MonthlyPayroll, WithholdingCell, ExtraField, FieldPref
+from core.models import Base, Company, MonthlyPayroll, WithholdingCell, ExtraField, FieldPref
 import os
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Header
-from payroll_shared.auth import verify_company_token, verify_admin_token
-from payroll_shared.fields import cleanup_duplicate_extra_fields
-from payroll_shared.rate_limit import get_admin_rate_limiter
-from payroll_shared.settings import get_settings
-from payroll_shared.alembic_utils import ensure_up_to_date
+from starlette.exceptions import HTTPException as StarletteHTTPException
+from core.fields import cleanup_duplicate_extra_fields
+from core.rate_limit import get_admin_rate_limiter
+from core.settings import get_settings
+from core.alembic_utils import ensure_up_to_date
+from core.services.auth import (
+    authenticate_admin,
+    authenticate_company,
+    extract_token,
+    issue_admin_token,
+    issue_company_token,
+)
+from .schemas import (
+    AdminCompaniesResponse,
+    AdminCompanyCreateResponse,
+    AdminCompanyResetResponse,
+    ClientLogPayload,
+    CompanySummary,
+    FieldAddRequest,
+    FieldAddResponse,
+    FieldCalcConfigRequest,
+    FieldCalcConfigResponse,
+    FieldCalcInclude,
+    FieldExemptConfigRequest,
+    FieldExemptConfigResponse,
+    FieldExemptEntry,
+    FieldGroupConfigRequest,
+    FieldGroupConfigResponse,
+    FieldInfo,
+    FieldDeleteRequest,
+    HealthResponse,
+    PayrollRowsResponse,
+    SimpleOkResponse,
+    WithholdingImportResponse,
+    WithholdingResponse,
+    WithholdingYearsResponse,
+)
+
+
+ADMIN_COOKIE_NAME = "admin_token"
+PORTAL_COOKIE_NAME = "portal_token"
 import secrets
 from werkzeug.security import generate_password_hash
 from urllib.parse import quote
@@ -48,51 +86,59 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="Payroll API (FastAPI)", lifespan=lifespan)
+router = APIRouter()
+
+
+def _format_error_payload(detail: object, code: Optional[str] = None) -> dict:
+    if isinstance(detail, dict):
+        message = detail.get("error") or detail.get("detail") or str(detail)
+        code = code or detail.get("code")
+    else:
+        message = str(detail or "")
+    payload = {"ok": False, "error": message or "error"}
+    if code:
+        payload["code"] = str(code)
+    return payload
+
+
+def register_exception_handlers(target) -> None:
+    async def http_exception_handler(request, exc: StarletteHTTPException):
+        payload = _format_error_payload(exc.detail)
+        return JSONResponse(status_code=exc.status_code, content=payload)
+
+    async def validation_exception_handler(request, exc: RequestValidationError):
+        payload = {
+            "ok": False,
+            "error": "validation_error",
+            "code": "validation_error",
+            "details": exc.errors(),
+        }
+        return JSONResponse(status_code=422, content=payload)
+
+    target.add_exception_handler(StarletteHTTPException, http_exception_handler)
+    target.add_exception_handler(RequestValidationError, validation_exception_handler)
+
 
 # CORS for dev/proxy scenarios
-origins_env = (os.environ.get("API_CORS_ORIGINS") or "").strip()
-if origins_env:
-    _origins = [o.strip() for o in origins_env.split(",") if o.strip()]
-else:
-    api_base = (os.environ.get("API_BASE_URL") or "").strip()
-    if api_base:
-        _origins = [api_base]
-    else:
-        # Safer dev defaults (no wildcard): allow common loopback origins
-        _origins = [
-            "http://localhost:5000",
-            "http://127.0.0.1:5000",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-        ]
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=_origins,
-    allow_credentials=False,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
-
-@app.get("/healthz")
+@router.get("/healthz", response_model=HealthResponse)
 def healthz(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         return {"ok": True, "status": "healthy"}
     except Exception as e:
-        return {"ok": False, "error": str(e)}
+        raise HTTPException(status_code=500, detail=str(e))
 
-@app.get('/livez')
+@router.get('/livez', response_model=SimpleOkResponse)
 def livez():
-    return {"ok": True}
+    return SimpleOkResponse()
 
-@app.get('/readyz')
+@router.get('/readyz', response_model=HealthResponse)
 def readyz(db: Session = Depends(get_db)):
     try:
         db.execute(text("SELECT 1"))
         return {"ok": True}
     except Exception as e:
-        return {"ok": False, "error": str(e)}, 500
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 def get_company_by_slug(db: Session, slug: str) -> Optional[Company]:
@@ -114,8 +160,8 @@ def compute_withholding_tax(db: Session, year: int, dependents: int, wage: int) 
     return int(row.tax) if row else 0
 
 
-@app.get("/portal/{slug}/api/withholding")
-@app.get("/api/portal/{slug}/withholding")
+@router.get("/portal/{slug}/api/withholding", response_model=WithholdingResponse)
+@router.get("/api/portal/{slug}/withholding", response_model=WithholdingResponse)
 def api_withholding(
     slug: str,
     year: int = Query(..., description="연도"),
@@ -125,90 +171,50 @@ def api_withholding(
     authorization: Optional[str] = Header(None),
     x_api_token: Optional[str] = Header(None),
     token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
 ):
-    # Auth
-    require_company(slug, db, authorization, x_api_token, token)
+    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
     tax = compute_withholding_tax(db, year, dep, wage)
-    return {"ok": True, "year": year, "dep": dep, "wage": wage, "tax": int(tax), "local_tax": int(round((tax or 0) * 0.1))}
-
-# ------------------------------
-# Admin helpers
-# ------------------------------
-
-def _extract_admin_token(authorization: Optional[str], x_admin_token: Optional[str], token_qs: Optional[str]) -> Optional[str]:
-    if token_qs:
-        return token_qs
-    if x_admin_token:
-        return x_admin_token
-    if authorization and authorization.lower().startswith('bearer '):
-        return authorization.split(' ', 1)[1].strip()
-    return None
-
-
-def require_admin(authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None), admin_token: Optional[str] = None):
-    tok = _extract_admin_token(authorization, x_admin_token, admin_token)
-    if not tok:
-        raise HTTPException(status_code=403, detail="missing admin token")
-    secret = get_settings().secret_key
-    payload = verify_admin_token(secret, tok)
-    if not payload:
-        raise HTTPException(status_code=403, detail="invalid admin token")
-    return True
+    return {
+        "ok": True,
+        "year": year,
+        "dep": dep,
+        "wage": wage,
+        "tax": int(tax),
+        "local_tax": int(round((tax or 0) * 0.1)),
+    }
 
 
 # ------------------------------
 # Client log collector
 # ------------------------------
 
-@app.post('/client-log')
-async def client_log(request: Request, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None), token: Optional[str] = None):
+@router.post('/client-log', response_model=SimpleOkResponse)
+async def client_log(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+    payload: Optional[ClientLogPayload] = Body(default=None),
+):
     # Accept either admin token or company token (with revocation check)
-    who = None
-    secret = get_settings().secret_key
-    # Try admin token first
-    a_tok = None
-    # Reuse admin extraction logic
-    try:
-        # This function exists below; re-implement quick extraction here
-        if authorization and authorization.lower().startswith('bearer '):
-            a_tok = authorization.split(' ', 1)[1].strip()
-        if (not a_tok) and x_admin_token:
-            a_tok = x_admin_token
-    except Exception:
-        a_tok = None
-    if a_tok:
-        if verify_admin_token(secret, a_tok):
-            who = 'admin'
-    if not who:
-        # Company token path
-        c_tok = None
-        try:
-            if authorization and authorization.lower().startswith('bearer '):
-                c_tok = authorization.split(' ', 1)[1].strip()
-            if (not c_tok) and x_api_token:
-                c_tok = x_api_token
-            if (not c_tok) and token:
-                c_tok = token
-        except Exception:
-            c_tok = None
-        if c_tok:
-            payload = verify_company_token(secret, c_tok)
-            if payload:
-                # Optional revocation check
-                try:
-                    slug = str(payload.get('slug'))
-                    company = get_company_by_slug(db, slug)
-                    ckey = (company.token_key or '').strip() if company else ''
-                    pkey = str(payload.get('key', '') or '').strip()
-                    if ckey and (ckey != pkey):
-                        raise HTTPException(status_code=403, detail="token revoked")
-                    who = f"company:{company.id}" if company else f"company:{slug}"
-                except Exception:
-                    who = f"company:{payload.get('cid','?')}"
+    admin_tok = extract_token(authorization, x_admin_token, None, admin_cookie)
+    who: Optional[str] = None
+    if admin_tok and authenticate_admin(admin_tok):
+        who = 'admin'
+    else:
+        company_tok = extract_token(authorization, x_api_token, token, portal_cookie)
+        if company_tok:
+            company = authenticate_company(db, None, company_tok)
+            if company:
+                who = f"company:{company.slug}"
     if not who:
         raise HTTPException(status_code=403, detail="forbidden")
     # Read payload
-    data = await request.json() if request.headers.get('content-type','').startswith('application/json') else {}
+    data = payload.dict() if payload else {}
     def _clip(v, n=2000):
         try:
             s = str(v or '')
@@ -231,23 +237,38 @@ async def client_log(request: Request, db: Session = Depends(get_db), authorizat
         print(json.dumps({"client_log": out}, ensure_ascii=False), flush=True)
     except Exception:
         pass
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
 # ------------------------------
 # Admin: Withholding table
 # ------------------------------
 
-@app.get("/admin/tax/withholding/sample")
-def admin_withholding_sample(year: int = Query(...), dep: int = Query(...), wage: int = Query(...), db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.get("/admin/tax/withholding/sample", response_model=WithholdingResponse)
+def admin_withholding_sample(
+    year: int = Query(...),
+    dep: int = Query(...),
+    wage: int = Query(...),
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     tax = compute_withholding_tax(db, year, dep, wage)
     return {"ok": True, "year": year, "dep": dep, "wage": wage, "tax": int(tax), "local_tax": int(round((tax or 0) * 0.1))}
 
 
-@app.post("/admin/tax/withholding/import")
-async def admin_withholding_import(year: int = Form(...), file: UploadFile = File(...), db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.post("/admin/tax/withholding/import", response_model=WithholdingImportResponse)
+async def admin_withholding_import(
+    year: int = Form(...),
+    file: UploadFile = File(...),
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     from openpyxl import load_workbook
     try:
         content = await file.read()
@@ -300,9 +321,14 @@ async def admin_withholding_import(year: int = Form(...), file: UploadFile = Fil
         raise HTTPException(status_code=400, detail=str(e))
 
 
-@app.get("/admin/api/withholding/years")
-def admin_withholding_years(db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.get("/admin/api/withholding/years", response_model=WithholdingYearsResponse)
+def admin_withholding_years(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     try:
         rows = db.execute(text("SELECT year, COUNT(1) FROM withholding_cells GROUP BY year ORDER BY year DESC")).all()
         return {"ok": True, "years": [(int(y), int(c)) for (y, c) in rows]}
@@ -314,9 +340,16 @@ def admin_withholding_years(db: Session = Depends(get_db), authorization: Option
 # Admin: Company management
 # ------------------------------
 
-@app.post("/admin/company/new")
-async def admin_company_new(name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.post("/admin/company/new", response_model=AdminCompanyCreateResponse)
+async def admin_company_new(
+    name: str = Form(...),
+    slug: str = Form(...),
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     name = (name or '').strip()
     slug = (slug or '').strip().lower()
     if not name or not slug:
@@ -328,12 +361,24 @@ async def admin_company_new(name: str = Form(...), slug: str = Form(...), db: Se
     comp = Company(name=name, slug=slug, access_hash=access_hash)
     db.add(comp)
     db.commit()
-    return {"ok": True, "company": {"id": comp.id, "name": comp.name, "slug": comp.slug}, "access_code": access_code}
+    company_payload = CompanySummary(
+        id=comp.id,
+        name=comp.name,
+        slug=comp.slug,
+        created_at=comp.created_at.isoformat() if comp.created_at else None,
+    )
+    return {"ok": True, "company": company_payload, "access_code": access_code}
 
 
-@app.post("/admin/company/{company_id}/reset-code")
-def admin_company_reset_code(company_id: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.post("/admin/company/{company_id}/reset-code", response_model=AdminCompanyResetResponse)
+def admin_company_reset_code(
+    company_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     comp = db.get(Company, company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="not found")
@@ -343,23 +388,41 @@ def admin_company_reset_code(company_id: int, db: Session = Depends(get_db), aut
     return {"ok": True, "company_id": comp.id, "access_code": access_code}
 
 
-@app.get("/admin/companies")
-def admin_companies(db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
-    require_admin(authorization, x_admin_token, None)
+@router.get("/admin/companies", response_model=AdminCompaniesResponse)
+def admin_companies(
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     rows = db.query(Company).order_by(Company.created_at.desc()).all()
-    return {"ok": True, "companies": [{"id": c.id, "name": c.name, "slug": c.slug, "created_at": c.created_at.isoformat() if c.created_at else ''} for c in rows]}
+    companies = [
+        CompanySummary(
+            id=c.id,
+            name=c.name,
+            slug=c.slug,
+            created_at=c.created_at.isoformat() if c.created_at else None,
+        )
+        for c in rows
+    ]
+    return {"ok": True, "companies": companies}
 
 
-@app.get("/admin/company/{company_id}/impersonate-token")
-def admin_impersonate_token(company_id: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_admin_token: Optional[str] = Header(None)):
+@router.get("/admin/company/{company_id}/impersonate-token")
+def admin_impersonate_token(
+    company_id: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+):
     # Returns a portal token for the given company
-    require_admin(authorization, x_admin_token, None)
+    require_admin(authorization, x_admin_token, None, admin_cookie)
     comp = db.get(Company, company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="not found")
-    from payroll_shared.auth import make_company_token
-    secret = get_settings().secret_key
-    tok = make_company_token(secret, comp.id, comp.slug, is_admin=True)
+    tok = issue_company_token(db, comp, is_admin=True)
     return {"ok": True, "slug": comp.slug, "token": tok}
 
 
@@ -368,7 +431,7 @@ def admin_impersonate_token(company_id: int, db: Session = Depends(get_db), auth
 # ------------------------------
 
 
-@app.post("/admin/login")
+@router.post("/admin/login")
 def admin_login_api(request: Request, password: str = Form(...)):
     admin_pw = get_settings().admin_password
     if password != admin_pw:
@@ -391,8 +454,6 @@ def admin_login_api(request: Request, password: str = Form(...)):
         if exceeded:
             raise HTTPException(status_code=429, detail="too many attempts")
         raise HTTPException(status_code=403, detail="invalid password")
-    from payroll_shared.auth import make_admin_token
-    secret = get_settings().secret_key
     try:
         ttl = int(os.environ.get("ADMIN_TOKEN_TTL", "7200") or 7200)
     except Exception:
@@ -402,14 +463,32 @@ def admin_login_api(request: Request, password: str = Form(...)):
         get_admin_rate_limiter().reset(f"fastapi:{ip}")
     except Exception:
         pass
-    tok = make_admin_token(secret, ttl_seconds=ttl)
-    return {"ok": True, "token": tok, "ttl": ttl}
+    tok = issue_admin_token(ttl_seconds=ttl)
+    response = JSONResponse({"ok": True, "token": tok, "ttl": ttl})
+    response.set_cookie(
+        key=ADMIN_COOKIE_NAME,
+        value=tok,
+        httponly=True,
+        samesite="lax",
+        secure=bool(os.environ.get("COOKIE_SECURE", "").lower() in {"1", "true", "yes", "on"}),
+        max_age=ttl,
+    )
+    return response
 
 
-@app.get("/portal/{slug}/api/payroll/{year}/{month}")
-@app.get("/api/portal/{slug}/payroll/{year}/{month}")
-def api_get_payroll(slug: str, year: int, month: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None), token: Optional[str] = None):
-    company = require_company(slug, db, authorization, x_api_token, token)
+@router.get("/portal/{slug}/api/payroll/{year}/{month}", response_model=PayrollRowsResponse)
+@router.get("/api/portal/{slug}/payroll/{year}/{month}", response_model=PayrollRowsResponse)
+def api_get_payroll(
+    slug: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
     rec = (
         db.query(MonthlyPayroll)
         .filter(
@@ -478,9 +557,18 @@ def _parse_rows_from_form(form: dict) -> list[dict]:
     return rows
 
 
-@app.post("/portal/{slug}/payroll/{year}/{month}")
-async def api_save_payroll(slug: str, year: int, month: int, request: Request, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None)):
-    company = require_company(slug, db, authorization, x_api_token, None)
+@router.post("/portal/{slug}/payroll/{year}/{month}", response_model=SimpleOkResponse)
+async def api_save_payroll(
+    slug: str,
+    year: int,
+    month: int,
+    request: Request,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, None, portal_cookie)
     # accept x-www-form-urlencoded or JSON
     rows: list[dict]
     ct = request.headers.get("content-type", "")
@@ -511,7 +599,7 @@ async def api_save_payroll(slug: str, year: int, month: int, request: Request, d
     else:
         rec.rows_json = data
     db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
 # ------------------------------
@@ -529,25 +617,25 @@ def _load_include_map(db: Session, company: Company) -> dict:
     return inc
 
 
-@app.get("/portal/{slug}/fields/calc-config")
-@app.get("/api/portal/{slug}/fields/calc-config")
+@router.get("/portal/{slug}/fields/calc-config", response_model=FieldCalcConfigResponse)
+@router.get("/api/portal/{slug}/fields/calc-config", response_model=FieldCalcConfigResponse)
 def api_get_calc_config(slug: str, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     include = _load_include_map(db, company)
-    return {"ok": True, "include": include}
+    return FieldCalcConfigResponse(include=FieldCalcInclude(**include))
 
 
-@app.post("/portal/{slug}/fields/calc-config")
-@app.post("/api/portal/{slug}/fields/calc-config")
-def api_save_calc_config(slug: str, payload: dict, db: Session = Depends(get_db)):
+@router.post("/portal/{slug}/fields/calc-config", response_model=SimpleOkResponse)
+@router.post("/api/portal/{slug}/fields/calc-config", response_model=SimpleOkResponse)
+def api_save_calc_config(slug: str, payload: FieldCalcConfigRequest, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
-    inc = payload.get("include") or {}
-    nhis = (inc.get("nhis") or {}) if isinstance(inc, dict) else {}
-    ei = (inc.get("ei") or {}) if isinstance(inc, dict) else {}
+    inc = payload.include or {}
+    nhis = inc.get("nhis") or {}
+    ei = inc.get("ei") or {}
     if not isinstance(nhis, dict) or not isinstance(ei, dict):
         raise HTTPException(status_code=400, detail="invalid payload")
     nhis_keys = {k for k, v in nhis.items() if v}
@@ -568,7 +656,7 @@ def api_save_calc_config(slug: str, payload: dict, db: Session = Depends(get_db)
         if p.field not in ei_keys:
             p.ins_ei = False
     db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
 def _base_exemptions_from_env() -> dict:
@@ -581,35 +669,30 @@ def _base_exemptions_from_env() -> dict:
         return {}
 
 
-@app.get("/portal/{slug}/fields/exempt-config")
-@app.get("/api/portal/{slug}/fields/exempt-config")
+@router.get("/portal/{slug}/fields/exempt-config", response_model=FieldExemptConfigResponse)
+@router.get("/api/portal/{slug}/fields/exempt-config", response_model=FieldExemptConfigResponse)
 def api_get_exempt_config(slug: str, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
-    ex: dict = {}
+    ex: dict[str, FieldExemptEntry] = {}
     for p in rows:
         if bool(getattr(p, "exempt_enabled", False)) or int(getattr(p, "exempt_limit", 0) or 0) > 0:
-            ex[p.field] = {"enabled": bool(p.exempt_enabled), "limit": int(p.exempt_limit or 0)}
-    return {"ok": True, "exempt": ex, "base": _base_exemptions_from_env()}
+            ex[p.field] = FieldExemptEntry(enabled=bool(p.exempt_enabled), limit=int(p.exempt_limit or 0))
+    return FieldExemptConfigResponse(exempt=ex, base=_base_exemptions_from_env())
 
 
-@app.post("/portal/{slug}/fields/exempt-config")
-@app.post("/api/portal/{slug}/fields/exempt-config")
-def api_save_exempt_config(slug: str, payload: dict, db: Session = Depends(get_db)):
+@router.post("/portal/{slug}/fields/exempt-config", response_model=SimpleOkResponse)
+@router.post("/api/portal/{slug}/fields/exempt-config", response_model=SimpleOkResponse)
+def api_save_exempt_config(slug: str, payload: FieldExemptConfigRequest, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
-    raw = payload.get("exempt") or payload.get("ov") or {}
-    if not isinstance(raw, dict):
-        raise HTTPException(status_code=400, detail="invalid payload")
+    raw = payload.exempt or {}
     for field, conf in raw.items():
-        enabled = bool((conf or {}).get("enabled"))
-        try:
-            limit = int((conf or {}).get("limit") or 0)
-        except Exception:
-            limit = 0
+        enabled = bool(conf.enabled)
+        limit = int(conf.limit or 0)
         pref = db.query(FieldPref).filter(FieldPref.company_id == company.id, FieldPref.field == field).first()
         if not pref:
             pref = FieldPref(company_id=company.id, field=field)
@@ -617,23 +700,24 @@ def api_save_exempt_config(slug: str, payload: dict, db: Session = Depends(get_d
         pref.exempt_enabled = enabled
         pref.exempt_limit = limit
     db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
-@app.post("/portal/{slug}/fields/add")
-@app.post("/api/portal/{slug}/fields/add")
-def api_add_field(slug: str, payload: dict, db: Session = Depends(get_db)):
+@router.post("/portal/{slug}/fields/add", response_model=FieldAddResponse)
+@router.post("/api/portal/{slug}/fields/add", response_model=FieldAddResponse)
+def api_add_field(slug: str, payload: FieldAddRequest, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
-    label = (payload.get("label") or "").strip()
-    typ = (payload.get("typ") or "number").strip()
+    label = payload.label.strip()
+    typ = payload.typ.strip()
     if not label:
         raise HTTPException(status_code=400, detail="label required")
     # Prevent dup by label per company (best-effort)
     existing = db.query(ExtraField).filter(ExtraField.company_id == company.id, ExtraField.label == label).first()
     if existing:
-        return {"ok": True, "field": {"name": existing.name, "label": existing.label, "typ": existing.typ}, "existed": True}
+        field_info = FieldInfo(name=existing.name, label=existing.label, typ=existing.typ)
+        return FieldAddResponse(field=field_info, existed=True)
     # Generate unique name from label
     base = label
     name = base
@@ -648,16 +732,16 @@ def api_add_field(slug: str, payload: dict, db: Session = Depends(get_db)):
         cleanup_duplicate_extra_fields(db, company)
     except Exception:
         pass
-    return {"ok": True, "field": {"name": ef.name, "label": ef.label, "typ": ef.typ}}
+    return FieldAddResponse(field=FieldInfo(name=ef.name, label=ef.label, typ=ef.typ))
 
 
-@app.post("/portal/{slug}/fields/delete")
-@app.post("/api/portal/{slug}/fields/delete")
-def api_delete_field(slug: str, payload: dict, db: Session = Depends(get_db)):
+@router.post("/portal/{slug}/fields/delete", response_model=SimpleOkResponse)
+@router.post("/api/portal/{slug}/fields/delete", response_model=SimpleOkResponse)
+def api_delete_field(slug: str, payload: FieldDeleteRequest, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
-    name = (payload.get("name") or "").strip()
+    name = payload.name.strip()
     if not name:
         raise HTTPException(status_code=400, detail="name required")
     ef = db.query(ExtraField).filter(ExtraField.company_id == company.id, ExtraField.name == name).first()
@@ -665,19 +749,17 @@ def api_delete_field(slug: str, payload: dict, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="not found")
     db.delete(ef)
     db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
-@app.post("/portal/{slug}/fields/group-config")
-@app.post("/api/portal/{slug}/fields/group-config")
-def api_save_group_config(slug: str, payload: dict, db: Session = Depends(get_db)):
+@router.post("/portal/{slug}/fields/group-config", response_model=FieldGroupConfigResponse)
+@router.post("/api/portal/{slug}/fields/group-config", response_model=FieldGroupConfigResponse)
+def api_save_group_config(slug: str, payload: FieldGroupConfigRequest, db: Session = Depends(get_db)):
     company = get_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
-    group_map = payload.get("map") or payload.get("group") or {}
-    alias_map = payload.get("alias") or {}
-    if not isinstance(group_map, dict) or not isinstance(alias_map, dict):
-        raise HTTPException(status_code=400, detail="invalid payload")
+    group_map = payload.map or {}
+    alias_map = payload.alias or {}
     for field, grp in group_map.items():
         grp = (grp or "none").strip()
         pref = db.query(FieldPref).filter(FieldPref.company_id == company.id, FieldPref.field == field).first()
@@ -699,16 +781,24 @@ def api_save_group_config(slug: str, payload: dict, db: Session = Depends(get_db
         cleanup_duplicate_extra_fields(db, company)
     except Exception:
         pass
-    return {"ok": True}
+    return FieldGroupConfigResponse()
 
 
 # ------------------------------
 # Close / Open month
 # ------------------------------
 
-@app.post("/portal/{slug}/payroll/{year}/{month}/close")
-def api_close_month(slug: str, year: int, month: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None)):
-    company = require_company(slug, db, authorization, x_api_token, None)
+@router.post("/portal/{slug}/payroll/{year}/{month}/close", response_model=SimpleOkResponse)
+def api_close_month(
+    slug: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, None, portal_cookie)
     rec = (
         db.query(MonthlyPayroll)
         .filter(
@@ -724,12 +814,20 @@ def api_close_month(slug: str, year: int, month: int, db: Session = Depends(get_
     else:
         rec.is_closed = True
     db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
-@app.post("/portal/{slug}/payroll/{year}/{month}/open")
-def api_open_month(slug: str, year: int, month: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None)):
-    company = require_company(slug, db, authorization, x_api_token, None)
+@router.post("/portal/{slug}/payroll/{year}/{month}/open", response_model=SimpleOkResponse)
+def api_open_month(
+    slug: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, None, portal_cookie)
     rec = (
         db.query(MonthlyPayroll)
         .filter(
@@ -742,15 +840,24 @@ def api_open_month(slug: str, year: int, month: int, db: Session = Depends(get_d
     if rec:
         rec.is_closed = False
         db.commit()
-    return {"ok": True}
+    return SimpleOkResponse()
 
 
 # ------------------------------
 # Export (basic workbook)
 # ------------------------------
-@app.get("/portal/{slug}/export/{year}/{month}")
-def api_export(slug: str, year: int, month: int, db: Session = Depends(get_db), authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None), token: Optional[str] = None):
-    company = require_company(slug, db, authorization, x_api_token, token)
+@router.get("/portal/{slug}/export/{year}/{month}")
+def api_export(
+    slug: str,
+    year: int,
+    month: int,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
     rec = (
         db.query(MonthlyPayroll)
         .filter(
@@ -767,9 +874,8 @@ def api_export(slug: str, year: int, month: int, db: Session = Depends(get_db), 
     except Exception:
         rows = []
     # Build workbook identical to Flask export using shared exporter
-    from payroll_shared.exporter import build_salesmap_workbook
-    from payroll_shared.schema import DEFAULT_COLUMNS
-    from fastapi.responses import StreamingResponse
+    from core.exporter import build_salesmap_workbook
+    from core.schema import DEFAULT_COLUMNS
     # Build all_columns = DEFAULT + extras
     extras = db.query(ExtraField).filter(ExtraField.company_id == company.id).order_by(ExtraField.position.asc(), ExtraField.id.asc()).all()
     all_columns = list(DEFAULT_COLUMNS) + [(e.name, e.label, e.typ or 'number') for e in extras]
@@ -799,37 +905,54 @@ def api_export(slug: str, year: int, month: int, db: Session = Depends(get_db), 
         media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
         headers=headers,
     )
-def _extract_token(authorization: Optional[str], x_api_token: Optional[str], token_qs: Optional[str]) -> Optional[str]:
-    if token_qs:
-        return token_qs
-    if x_api_token:
-        return x_api_token
-    if authorization and authorization.lower().startswith('bearer '):
-        return authorization.split(' ', 1)[1].strip()
-    return None
-
-
-def require_company(slug: str, db: Session, authorization: Optional[str] = Header(None), x_api_token: Optional[str] = Header(None), token: Optional[str] = None) -> Company:
-    tok = _extract_token(authorization, x_api_token, token)
+def require_company(
+    slug: str,
+    db: Session,
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+) -> Company:
+    tok = extract_token(authorization, x_api_token, token, portal_cookie)
     if not tok:
         raise HTTPException(status_code=403, detail="missing token")
-    secret = get_settings().secret_key
-    payload = verify_company_token(secret, tok)
-    if not payload:
-        raise HTTPException(status_code=403, detail="invalid token")
-    if str(payload.get('slug')) != str(slug):
-        raise HTTPException(status_code=403, detail="slug mismatch")
-    company = get_company_by_slug(db, slug)
+    company = authenticate_company(db, slug, tok)
     if not company:
-        raise HTTPException(status_code=404, detail="company not found")
-    if int(payload.get('cid', 0)) != int(company.id):
-        raise HTTPException(status_code=403, detail="company mismatch")
-    # Optional revocation check: if company has token_key, require matching key claim
-    try:
-        ckey = (company.token_key or '').strip()
-        pkey = str(payload.get('key', '') or '').strip()
-        if ckey and (ckey != pkey):
-            raise HTTPException(status_code=403, detail="token revoked")
-    except AttributeError:
-        pass
+        if not get_company_by_slug(db, slug):
+            raise HTTPException(status_code=404, detail="company not found")
+        raise HTTPException(status_code=403, detail="invalid token")
     return company
+
+
+def create_app() -> FastAPI:
+    application = FastAPI(title="Payroll API (FastAPI)", lifespan=lifespan)
+
+    origins_env = (os.environ.get("API_CORS_ORIGINS") or "").strip()
+    if origins_env:
+        origins = [o.strip() for o in origins_env.split(",") if o.strip()]
+    else:
+        api_base = (os.environ.get("API_BASE_URL") or "").strip()
+        if api_base:
+            origins = [api_base]
+        else:
+            origins = [
+                "http://localhost:5000",
+                "http://127.0.0.1:5000",
+                "http://localhost:8000",
+                "http://127.0.0.1:8000",
+            ]
+
+    application.add_middleware(
+        CORSMiddleware,
+        allow_origins=origins,
+        allow_credentials=False,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    application.include_router(router)
+    register_exception_handlers(application)
+    return application
+
+
+app = create_app()

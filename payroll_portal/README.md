@@ -5,7 +5,7 @@
 - 회사별 전용 접속코드로만 접근 가능하도록 분리되어 있습니다.
 
 구성
-- Python + Flask + SQLite + SQLAlchemy + openpyxl
+- Python + FastAPI + SQLite + SQLAlchemy + openpyxl
 - DB 파일: `payroll_portal/app.db`
 
 설치
@@ -24,8 +24,8 @@
    - 스키마 자동생성(개발용): 기본값 1. 운영에서는 `export PAYROLL_AUTO_APPLY_DDL=0`
 
 실행
-   python -m flask --app payroll_portal.app run --debug
-   브라우저에서 http://127.0.0.1:5000 접속
+   uvicorn app.main:app --reload
+   브라우저에서 http://127.0.0.1:8000 접속
 
 사용 흐름
 1) 관리자 로그인 후 회사 생성(회사명, 슬러그)

@@ -5,7 +5,7 @@ from typing import Dict
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models import MonthlyPayrollRow
+from core.models import MonthlyPayrollRow
 
 
 def monthly_summary(
@@ -94,4 +94,3 @@ def monthly_summary(
         "total_deductions": int(total_deductions),
         "net_pay": int(net_pay),
     }
-

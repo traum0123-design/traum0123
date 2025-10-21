@@ -74,3 +74,11 @@ def redis_lock(
             except Exception:
                 pass
 
+
+@contextmanager
+def company_extra_field_lock(company_id: int, label: str) -> Iterator[bool]:
+    """Distributed lock scoped to (company, label) for extra field mutations."""
+
+    key = f"company:{int(company_id)}:extra:{label}"
+    with redis_lock(key, ttl_seconds=30, wait_timeout=8) as acquired:
+        yield acquired
