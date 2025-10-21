@@ -1,0 +1,2059 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="kicker">PAYROLL</div>
+<h1>{{ company_name }} · {{ year }}년 {{ '%02d'|format(month) }}월 급여입력</h1>
+<style>
+  /* 주민등록번호 검증 실패 표시 */
+  input.invalid-ssn {
+    border-color: #DC2626 !important;
+    background-color: #FEF2F2 !important;
+  }
+</style>
+
+  <div class="toolbar">
+    <div class="toolbar-group">
+      <a class="btn" href="{{ url_for('portal.home', slug=slug) }}">월 변경</a>
+      <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
+      
+    <button type="button" class="btn" onclick="openPasteModal()" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
+  </div>
+  <div class="toolbar-actions">
+    {% if not is_closed %}
+      <button type="submit" form="payrollForm" class="btn primary">저장</button>
+    {% else %}
+      <span style="display:inline-block; margin-left:8px; padding:6px 12px; border-radius:14px; background:#FEE2E2; color:#991B1B; font-weight:600;">마감완료</span>
+    {% endif %}
+    {% if is_admin %}
+      {% if is_closed %}
+        <form class="js-portal-action" method="post" action="{{ url_for('portal.reopen_payroll', slug=slug, year=year, month=month) }}" style="display:inline; margin-left:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn ghost">마감 해제</button>
+        </form>
+      {% else %}
+        <form class="js-portal-action" method="post" action="{{ url_for('portal.close_payroll', slug=slug, year=year, month=month) }}" style="display:inline; margin-left:8px;">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn danger">마감</button>
+        </form>
+      {% endif %}
+    {% endif %}
+  </div>
+</div>
+
+<div class="kpis">
+  <div class="kpi">
+    <div class="kpi-title">인원</div>
+    <div id="kpiCount" class="kpi-value">0</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-title">합계</div>
+    <div id="kpiSum" class="kpi-value">0</div>
+    <div class="kpi-sub"><span>필드</span><select id="kpiFieldSelect"></select></div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-title">전직원 급여합계</div>
+    <div id="kpiAllowance" class="kpi-value">0</div>
+  </div>
+  <div class="kpi">
+    <div class="kpi-title">전직원 차인지급액</div>
+    <div id="kpiDeduct" class="kpi-value">0</div>
+  </div>
+  
+</div>
+
+<!-- Split view only: 표 보기 옵션 제거 -->
+
+<div id="splitView" class="card" style="display:block; padding:12px;">
+  <div class="split-grid">
+    
+    <!-- Left: employee list -->
+    <div class="panel">
+      <div class="panel-head">
+        <strong>사원 목록</strong>
+        <div style="flex:1"></div>
+        <input type="search" id="splitSearch" placeholder="사원명/코드 검색" style="max-width:220px">
+        {% if not is_closed %}
+        <button type="button" class="btn primary" style="margin-left:8px" onclick="prefillFromPrev()">전월 급여 복사</button>
+        <button type="button" class="btn" onclick="addRowGlobal()">사원 추가</button>
+        {% endif %}
+      </div>
+      <div class="panel-body">
+        <table class="list">
+          <colgroup id="empColgroup">
+            <col style="width:52px">
+            <col data-col="1" style="width:120px">
+            <col data-col="2" style="width:80px">
+            <col data-col="3" style="width:180px">
+            <col data-col="4" style="width:110px">
+            <col data-col="5" style="width:110px">
+            <col data-col="6" style="width:110px">
+            <col data-col="7" style="width:110px">
+          </colgroup>
+          <thead id="empHead">
+            <tr>
+              <th style="width:52px">#</th>
+              <th data-col="1" data-field="사원코드">사원코드</th>
+              <th data-col="2" data-field="사원명">사원명</th>
+              <th data-col="3" data-field="주민등록번호">주민등록번호</th>
+              <th data-col="4" data-field="입사일">입사일</th>
+              <th data-col="5" data-field="퇴사일">퇴사일</th>
+              <th data-col="6" data-field="휴직일">휴직일</th>
+              <th data-col="7" data-field="휴직종료일">휴직종료일</th>
+            </tr>
+          </thead>
+          <tbody id="empList"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Middle: earnings -->
+    <div class="panel">
+      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" onclick="openGroupModal()">항목 구성</button><button type="button" class="btn ghost" onclick="toggleBasicInfo()">기본정보</button><span id="selName" class="muted"></span></div>
+      <div class="panel-body">
+        <div id="basicInfo" class="basic-info"></div>
+        <table id="earnTable"></table>
+        <div class="summary">
+          <div class="row"><span>지급 합계</span><span id="sumEarnings">0</span></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: deductions + summary -->
+    <div class="panel">
+      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" onclick="openCalcConfig()">계산방법</button><button type="button" class="btn" onclick="openExemptConfig()">비과세</button></div>
+      <div class="panel-body">
+        <table id="dedTable"></table>
+        <div class="summary">
+          <div class="row"><span>공제 합계</span><span id="sumDeductions">0</span></div>
+          <div class="row total"><span>차인지급액</span><span id="sumNet">0</span></div>
+          <div class="row spacer" style="margin-top:8px; border-top:1px dashed var(--border); padding-top:8px;"></div>
+          <div class="row"><span>전직원 지급 합계</span><span id="grandEarnings">0</span></div>
+          <div class="row"><span>전직원 공제 합계</span><span id="grandDeductions">0</span></div>
+          <div class="row"><span>전직원 차인지급액</span><span id="grandNet">0</span></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<form id="payrollForm" method="post" class="card">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <input type="hidden" name="next" id="nextAfterSave" value="">
+  <div class="table-wrap">
+  <table class="table" id="payroll-table" data-columns='{{ columns|tojson }}'>
+    <thead>
+      <tr>
+        <th>#</th>
+        {% for field, label, typ in columns %}
+          {# determine column group for styling and toggling #}
+          {% set group = 'misc' %}
+          {% if label in ['사원코드','사원명','주민등록번호'] %}{% set group = 'basic' %}
+          {% elif label in ['연봉','월급여','기본급'] %}{% set group = 'pay' %}
+          {% elif label in ['식대','자가운전보조금','시간외수당','연장근로수당','현장수당','직급수당'] %}{% set group = 'allowance' %}
+          {% elif label in ['각종상환공제','국민연금','건강보험','장기요양보험','고용보험','소득세','지방소득세'] %}{% set group = 'deduct' %}
+          {% elif label in ['입사일','퇴사일','휴직일','휴직종료일','수습종료일(90%)','입사일 지남','월 중도입사','월 중도퇴사','퇴사월 지남','휴직중','월 중도휴직','월 중도복직','일할계산여부','근무일수','월 시작일','월 말일','월 총 일수','부양가족수'] %}{% set group = 'status' %}
+          {% endif %}
+          <th data-col="{{ loop.index0 }}" data-field="{{ field }}" data-group="{{ group }}" style="position:sticky; top:0;">
+            <span class="col-label">{{ label }}</span>
+            <span class="col-resizer" data-col="{{ loop.index0 }}" data-field="{{ field }}"></span>
+          </th>
+        {% endfor %}
+        <th>작업</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for row in rows %}
+      <tr>
+        <td class="rownum"></td>
+        {% set row_index = loop.index0 %}
+        {% for field, label, typ in columns %}
+          {% set group = 'misc' %}
+          {% if label in ['사원코드','사원명','주민등록번호'] %}{% set group = 'basic' %}
+          {% elif label in ['연봉','월급여','기본급'] %}{% set group = 'pay' %}
+          {% elif label in ['식대','자가운전보조금','시간외수당','연장근로수당','현장수당','직급수당'] %}{% set group = 'allowance' %}
+          {% elif label in ['각종상환공제','국민연금','건강보험','장기요양보험','고용보험','소득세','지방소득세'] %}{% set group = 'deduct' %}
+          {% elif label in ['입사일','퇴사일','휴직일','휴직종료일','수습종료일(90%)','입사일 지남','월 중도입사','월 중도퇴사','퇴사월 지남','휴직중','월 중도휴직','월 중도복직','일할계산여부','근무일수','월 시작일','월 말일','월 총 일수','부양가족수'] %}{% set group = 'status' %}
+          {% endif %}
+          <td>
+            {% set val = row.get(field, '') %}
+            {% if typ == 'checkbox' %}
+              <input type="hidden" data-col="{{ loop.index0 }}" data-field="{{ field }}" name="rows[{{ row_index }}][{{ field }}]" value="">
+              <input type="checkbox" data-col="{{ loop.index0 }}" data-field="{{ field }}" name="rows[{{ row_index }}][{{ field }}]" value="on" {% if val %}checked{% endif %}>
+            {% elif typ == 'number' %}
+              <input class="num" data-col="{{ loop.index0 }}" data-field="{{ field }}" type="text" inputmode="numeric" name="rows[{{ row_index }}][{{ field }}]" value="{{ val }}" {% if field == '기준보수월액' and not is_admin %}disabled{% endif %}>
+            {% elif typ == 'date' %}
+              <input type="date" data-col="{{ loop.index0 }}" data-field="{{ field }}" name="rows[{{ row_index }}][{{ field }}]" value="{{ val }}">
+            {% else %}
+              <input type="text" data-col="{{ loop.index0 }}" data-field="{{ field }}" name="rows[{{ row_index }}][{{ field }}]" value="{{ val }}" {% if field == '주민등록번호' %}placeholder="000000-0000000" inputmode="numeric"{% endif %} {% if field == '사원코드' and not is_admin %}disabled{% endif %}>
+            {% endif %}
+          </td>
+        {% endfor %}
+        <td>
+          <button type="button" onclick="rowCopy(this)">복사</button>
+          <button type="button" onclick="rowFillMonth(this)">월채움</button>
+          <button type="button" onclick="rowCompute(this)">계산</button>
+          <button type="button" onclick="rowDetail(this)">자세히</button>
+          <button type="button" class="danger" onclick="removeRow(this)">삭제</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+    <tfoot>
+      <tr>
+        <td>합계</td>
+        {% for field, label, typ in columns %}
+          {% if typ == 'number' %}
+            <td data-sum-for="{{ loop.index0 }}" class="num">0</td>
+          {% else %}
+            <td></td>
+          {% endif %}
+        {% endfor %}
+        <td></td>
+      </tr>
+    </tfoot>
+  </table>
+  </div>
+
+</form>
+
+<script nonce="{{ csp_nonce() }}">
+  // Debug/version banner to verify template is updated and script runs
+  (function(){
+    try{
+      const __TPL_VER__ = 'payroll-tpl-debug-r12-base-sum-fix';
+      window.__PAYROLL_TPL_VER__ = __TPL_VER__;
+      console.log('[PAYROLL] Template loaded. Version=', __TPL_VER__);
+    }catch(e){}
+  })();
+  // Enhance table: row numbering and dynamic add/remove
+  function renumber(){
+    let i = 0;
+    document.querySelectorAll('#payroll-table tbody tr').forEach((tr)=>{
+      if(tr.style.display === 'none') { tr.querySelector('.rownum').textContent = ''; return; }
+      i += 1; tr.querySelector('.rownum').textContent = i;
+    });
+  }
+
+  function bindInputEvents(tr){
+    tr.querySelectorAll('input').forEach(inp=>{
+      const fieldMatch = inp.name ? inp.name.match(/\[(.*?)\]$/) : null;
+      const fieldName = fieldMatch ? fieldMatch[1] : (inp.dataset.field || null);
+      attachNumericHandlers(inp, fieldName);
+      // Excel-like navigation in main table: Enter => move right, Shift+Enter => left
+      if(fieldName === '주민등록번호'){
+        try{ attachSsnHandlers(inp); }catch(e){}
+      }
+      inp.addEventListener('keydown', (e)=>{
+        if(e.key==='Enter'){
+          e.preventDefault();
+          const curTr = inp.closest('tr');
+          const inputs = Array.from(curTr.querySelectorAll('input[data-col]')).filter(el=> el.offsetParent !== null);
+          inputs.sort((a,b)=> parseInt(a.dataset.col) - parseInt(b.dataset.col));
+          const i = inputs.indexOf(inp);
+          if(e.shiftKey && i > 0){
+            const target = inputs[i-1]; target.focus(); target.select?.();
+          } else if(i >= 0 && i < inputs.length - 1){
+            const target = inputs[i+1];
+            target.focus(); target.select?.();
+          } else {
+            // move to first visible input of next row; if none, add
+            let nextTr = curTr.nextElementSibling;
+            if(!nextTr){ addRow(); nextTr = document.querySelector('#payroll-table tbody tr:last-child'); }
+            const first = Array.from(nextTr.querySelectorAll('input[data-col]')).filter(el=> el.offsetParent !== null).sort((a,b)=> parseInt(a.dataset.col) - parseInt(b.dataset.col))[0];
+            if(first){ first.focus(); first.select?.(); }
+          }
+          try{ if(fieldName && isNumericField(fieldName) && !DEDUCTION_FIELDS.has(fieldName)) computeDeductions(inp.closest('tr')); }catch(_){ }
+          try{ scheduleKpiUpdate(); }catch(_){ }
+        }
+
+        // Arrow keys: Right/Left move across cells; Up/Down move rows
+        const atStart = (inp.selectionStart || 0) === 0;
+        const atEnd = (inp.selectionEnd || 0) === (inp.value || '').length;
+        const curTr = inp.closest('tr');
+        const curCol = parseInt(inp.dataset.col || '-1', 10);
+
+        const nextVisibleInRow = (row, fromCol, dir)=>{
+          const cells = Array.from(row.querySelectorAll('input[data-col]')).filter(el=> el.offsetParent !== null);
+          cells.sort((a,b)=> parseInt(a.dataset.col) - parseInt(b.dataset.col));
+          let idx = cells.findIndex(el=> parseInt(el.dataset.col) === fromCol);
+          if(idx === -1){ idx = cells.indexOf(inp); }
+          const step = dir > 0 ? 1 : -1;
+          let j = idx + step;
+          while(j >=0 && j < cells.length){
+            const t = cells[j]; if(t && !t.disabled){ return t; }
+            j += step;
+          }
+          return null;
+        };
+
+        if(e.key === 'ArrowRight'){
+          // Move only when caret is at end or for non-textual inputs
+          const type = (inp.type||'').toLowerCase();
+          if(atEnd || type==='checkbox' || type==='date' || type==='number'){
+            e.preventDefault();
+            const target = nextVisibleInRow(curTr, curCol, +1);
+            if(target){ target.focus(); target.select?.(); }
+          }
+        }
+        if(e.key === 'ArrowLeft'){
+          const type = (inp.type||'').toLowerCase();
+          if(atStart || type==='checkbox' || type==='date' || type==='number'){
+            e.preventDefault();
+            const target = nextVisibleInRow(curTr, curCol, -1);
+            if(target){ target.focus(); target.select?.(); }
+          }
+        }
+        if(e.key === 'ArrowDown'){
+          e.preventDefault();
+          let nextTr = curTr.nextElementSibling;
+          if(!nextTr){ addRow(); nextTr = document.querySelector('#payroll-table tbody tr:last-child'); }
+          const target = nextTr.querySelector(`input[data-col="${curCol}"]`);
+          if(target && target.offsetParent !== null && !target.disabled){ target.focus(); target.select?.(); }
+        }
+        if(e.key === 'ArrowUp'){
+          e.preventDefault();
+          const prevTr = curTr.previousElementSibling;
+          if(prevTr){
+            const target = prevTr.querySelector(`input[data-col="${curCol}"]`);
+            if(target && target.offsetParent !== null && !target.disabled){ target.focus(); target.select?.(); }
+          }
+        }
+      });
+      const onChanged = ()=>{
+        try{
+          scheduleKpiUpdate();
+          // 급여항목 입력 시 자동으로 4대보험 다시 계산 (공제 항목 편집 중에는 루프 방지)
+          if(fieldName && isNumericField(fieldName) && !DEDUCTION_FIELDS.has(fieldName)){
+            const row = inp.closest('tr');
+            computeDeductions(row);
+          }
+        }catch(e){}
+      };
+      inp.addEventListener('input', onChanged);
+      inp.addEventListener('change', onChanged);
+      inp.addEventListener('blur', ()=>{
+        try{
+          if(fieldName && isNumericField(fieldName) && !DEDUCTION_FIELDS.has(fieldName)){
+            computeDeductions(inp.closest('tr'));
+          }
+          scheduleKpiUpdate();
+        }catch(_){ }
+      });
+    });
+  }
+
+  function addRow(){
+    const tbody = document.querySelector('#payroll-table tbody');
+    const tr0 = tbody.querySelector('tr');
+    const clone = tr0.cloneNode(true);
+    // clear inputs
+    clone.querySelectorAll('input').forEach(inp=>{ if(inp.type==='checkbox'){ inp.checked=false; } else { inp.value=''; } });
+    tbody.appendChild(clone);
+    // Re-index names
+    const trs = tbody.querySelectorAll('tr');
+    trs.forEach((tr, idx)=>{
+      tr.querySelectorAll('input').forEach(inp=>{
+        inp.name = inp.name.replace(/rows\[[0-9]+\]/, `rows[${idx}]`);
+      });
+    });
+    bindInputEvents(clone);
+    renumber();
+  }
+
+  function addRowGlobal(){
+    addRow();
+    buildEditList();
+    const idx = document.querySelectorAll('#payroll-table tbody tr').length - 1;
+    const listRow = document.querySelector(`#empList tr[data-idx='${idx}']`);
+    if(listRow){
+      selectEmp(idx, listRow);
+      const focusTarget = listRow.querySelector('input[data-field="사원명"]') || listRow.querySelector('input.list-input');
+      if(focusTarget){ focusTarget.focus(); focusTarget.select?.(); }
+    }
+  }
+
+  function removeRow(btn){
+    const tr = btn.closest('tr');
+    const tbody = tr.parentElement;
+    if(tbody.querySelectorAll('tr').length <= 1){
+      // keep at least 1 row
+      tr.querySelectorAll('input').forEach(inp=> { if(inp.type==='checkbox'){ inp.checked=false; } else { inp.value=''; } });
+      return;
+    }
+    tr.remove();
+    // reindex
+    const trs = tbody.querySelectorAll('tr');
+    trs.forEach((row, idx)=>{
+      row.querySelectorAll('input').forEach(inp=>{
+        inp.name = inp.name.replace(/rows\[[0-9]+\]/, `rows[${idx}]`);
+      });
+    });
+    renumber();
+    scheduleKpiUpdate();
+    buildEditList();
+    const totalRows = document.querySelectorAll('#payroll-table tbody tr').length;
+    if(currentIdx >= totalRows) currentIdx = Math.max(0, totalRows - 1);
+    const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
+    if(active){ selectEmp(currentIdx, active); }
+  }
+
+  // Template-specific helpers
+  const YEAR = {{ year }};
+  const MONTH = {{ month }};
+  const SLUG = {{ slug | tojson }};
+  try{ window.YEAR = YEAR; window.MONTH = MONTH; window.SLUG = SLUG; }catch(_){ }
+const PORTAL_HOME_URL = {{ url_for('portal.home', slug=slug) | tojson }};
+const SAVE_URL = {{ url_for('portal.save_payroll', slug=slug, year=year, month=month) | tojson }};
+const STORAGE_NS = '__' + (SLUG || 'default') + '__';
+function nsKey(name){ return STORAGE_NS + name; }
+  const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+  const EXTRA_FIELDS = {{ (extra_fields or []) | tojson }}; // [{name,label,typ}]
+  const EXTRA_SET = new Set((EXTRA_FIELDS||[]).map(e=> e.name));
+  const INS = {{ (insurance_config or {}) | tojson }};
+  try{ window.INS = INS; }catch(_){ }
+  function pad(n){ return String(n).padStart(2,'0'); }
+  function monthStart(){ return `${YEAR}-${pad(MONTH)}-01`; }
+  function daysInMonth(y, m){ return new Date(y, m, 0).getDate(); }
+  function monthEnd(){ return `${YEAR}-${pad(MONTH)}-${pad(daysInMonth(YEAR, MONTH))}`; }
+  function parseDate(s){ if(!s) return null; const parts = String(s).split('-'); if(parts.length!==3) return null; const [y,m,d] = parts.map(x=>parseInt(x,10)); if(!y||!m||!d) return null; return new Date(y, m-1, d); }
+  function parseDateFlex(s){
+    if(!s) return null; s = String(s).trim();
+    // support YYYY-MM-DD, YYYY.MM.DD, YYYY/MM/DD
+    const t = s.replace(/[^0-9]/g,'-').replace(/-+/g,'-');
+    const parts = t.split('-');
+    if(parts.length<3) return null; const [yy,mm,dd] = parts.slice(0,3).map(v=>parseInt(v,10));
+    if(!yy||!mm||!dd) return null; return new Date(yy, mm-1, dd);
+  }
+  function inRange(d, start, end){ return d >= start && d <= end; }
+  function val(tr, field){ return tr.querySelector(`[name$='[${field}]']`); }
+  function setIfEmpty(el, v){ if(!el) return; if(el.type==='checkbox'){ if(!el.checked) el.checked = !!v; } else { if(!el.value) el.value = v; } }
+
+  function fillMonthDefaults(tr){
+    const s = val(tr, '월 시작일');
+    const e = val(tr, '월 말일');
+    const t = val(tr, '월 총 일수');
+    setIfEmpty(s, monthStart());
+    setIfEmpty(e, monthEnd());
+    setIfEmpty(t, daysInMonth(YEAR, MONTH));
+  }
+
+  function computeBooleans(tr){
+    const s = parseDate(val(tr, '월 시작일')?.value || monthStart());
+    const e = parseDate(val(tr, '월 말일')?.value || monthEnd());
+    const join = parseDate(val(tr, '입사일')?.value);
+    const leave = parseDate(val(tr, '퇴사일')?.value);
+    const leaveStart = parseDate(val(tr, '휴직일')?.value);
+    const leaveEnd = parseDate(val(tr, '휴직종료일')?.value);
+
+    const f = (name)=> val(tr, name);
+    if(f('입사일 지남')) f('입사일 지남').checked = !!(join && join <= e);
+    if(f('퇴사월 지남')) f('퇴사월 지남').checked = !!(leave && leave <= e);
+    if(f('월 중도입사')) f('월 중도입사').checked = !!(join && inRange(join, s, e));
+    if(f('월 중도퇴사')) f('월 중도퇴사').checked = !!(leave && inRange(leave, s, e));
+    const onLeave = !!(leaveStart && (leaveStart <= e) && (!leaveEnd || leaveEnd >= s));
+    if(f('휴직중')) f('휴직중').checked = onLeave;
+    if(f('월 중도휴직')) f('월 중도휴직').checked = !!(leaveStart && inRange(leaveStart, s, e));
+    if(f('월 중도복직')) f('월 중도복직').checked = !!(leaveEnd && inRange(leaveEnd, s, e));
+    if(f('일할계산여부')){
+      const prorate = !!( (join && inRange(join, s, e)) || (leave && inRange(leave, s, e)) || onLeave );
+      if(!f('일할계산여부').checked) f('일할계산여부').checked = prorate;
+    }
+  }
+
+  // Prefill from previous month
+  async function prefillFromPrev(){
+    try{
+      const DEBUG = (function(){ try{ return localStorage.getItem('PAYROLL_DEBUG') === '1'; }catch(e){ return false; } })();
+      // Unconditional entry log so we can see calls without verbose filter
+      try{ console.log('[전월초안] 호출됨. DEBUG=', DEBUG); }catch(e){}
+      // Clear any active search filter to avoid hiding rows
+      const searchBox = document.getElementById('splitSearch');
+      if(searchBox){ searchBox.value=''; }
+      // Also clear the main table row filter if used previously
+      const rowSearch = document.getElementById('rowSearch');
+      if(rowSearch){ rowSearch.value=''; try{ applyRowFilter(); }catch(e){} }
+      const pY = (MONTH===1? YEAR-1 : YEAR);
+      const pM = (MONTH===1? 12 : (MONTH-1));
+      const res = await fetch(`/api/portal/${SLUG}/payroll/${pY}/${pM}`);
+      let j = null;
+      try { j = await res.json(); } catch(e){ j = null; }
+      if(!res.ok || !j || (j.ok===false)){
+        alert('전월 데이터를 불러오지 못했습니다. (로그인 세션 확인)');
+        return;
+      }
+      const rows = Array.isArray(j.rows) ? j.rows : [];
+      if(DEBUG) console.log('[전월초안] 원본 rows:', rows.length, rows.slice(0,2));
+      if(rows.length===0){ alert('전월 데이터가 없습니다.'); return; }
+      const startThis = parseDateFlex(monthStart());
+
+      // Build field list from table meta
+      const FIELDS = TABLE_META.cols.map(c=> c[0]);
+      const LABELS = new Map(TABLE_META.cols.map(c=> [c[0], c[1]]));
+      const TYPES = new Map(TABLE_META.cols.map(c=> [c[0], c[2]]));
+
+      // Transform
+      const nextRows = [];
+      let filteredResigned = 0, filteredEmpty = 0;
+      for(const r of rows){
+        // Build a normalized key map for robust fallback (공백/구두점 제거, 소문자)
+        const norm = (k)=> String(k||'').replace(/\s+/g,'').replace(/[_.:,]/g,'').toLowerCase();
+        const rmap = new Map(Object.keys(r||{}).map(k => [norm(k), r[k]]));
+        // include all rows regardless of 퇴사일 (요청에 따라 전월 전원 불러오기)
+        const leave = r['퇴사일'] ? parseDateFlex(r['퇴사일']) : null;
+        if(leave && leave < startThis){ filteredResigned++; }
+        const nr = {};
+        for(const f of FIELDS){
+          const label = LABELS.get(f) || f;
+          // Robust mapping: try by field key first, then by label key
+          let v = (r[f] !== undefined) ? r[f] : r[label];
+          if(v === undefined){
+            // Fallback by normalized key
+            v = rmap.get(norm(f));
+            if(v === undefined) v = rmap.get(norm(label));
+          }
+          const typ = TYPES.get(f);
+          if(label==='월 시작일') v = monthStart();
+          if(label==='월 말일') v = monthEnd();
+          if(label==='월 총 일수') v = daysInMonth(YEAR, MONTH);
+          nr[f] = v;
+        }
+        if(DEBUG){
+          const probe = { '사원코드': nr['사원코드'], '사원명': nr['사원명'], '주민등록번호': nr['주민등록번호'], '월급여': nr['월급여'], '기본급': nr['기본급'], '식대': nr['식대'] };
+          console.log('[전월초안] 매핑 미리보기:', probe);
+        }
+        // 빈행 자동 제거: 사원명/사원코드 모두 비고, 모든 숫자 0이면 skip
+        const code = (nr['사원코드']||'').toString().trim();
+        const name = (nr['사원명']||'').toString().trim();
+        let allZero = true;
+        TABLE_META.cols.forEach(([field,label,typ])=>{
+          if(typ==='number'){
+            const raw = String(nr[field] ?? '').replace(/[^0-9.-]/g,'').replace(/,/g,'');
+            const v = raw===''?0:Number(raw);
+            if(v!==0 && !Number.isNaN(v)) allZero = false;
+          }
+        });
+        if(code==='' && name==='' && allZero){
+          filteredEmpty++;
+        }else{
+          nextRows.push(nr);
+        }
+      }
+      if(nextRows.length===0){
+        if(rows.length>0){
+          // Fallback: keep all rows; month meta fields will be aligned
+          const kept = rows.slice();
+          if(kept.length>0){
+            kept.forEach(r=>{
+              const nr={};
+              FIELDS.forEach(f=>{
+                const lbl = LABELS.get(f) || f;
+                nr[f] = (r[f] !== undefined) ? r[f] : r[lbl];
+              });
+              nr['월 시작일']=monthStart(); nr['월 말일']=monthEnd(); nr['월 총 일수']=daysInMonth(YEAR, MONTH);
+              nextRows.push(nr);
+            });
+          }
+        }
+      }
+      if(nextRows.length===0){ alert('전월에서 가져올 사원이 없습니다. (퇴사제외 '+filteredResigned+', 빈행제외 '+filteredEmpty+')'); return; }
+
+      // Write to UI
+      const tbody = document.querySelector('#payroll-table tbody');
+      // Utilities to sync row count and set values safely without clearing DOM aggressively
+      function reindexAll(){
+        const trs = tbody.querySelectorAll('tr');
+        trs.forEach((row, idx)=>{
+          row.querySelectorAll('input').forEach(inp=>{
+            if(!inp.name) return; inp.name = inp.name.replace(/rows\[[0-9]+\]/, `rows[${idx}]`);
+          });
+        });
+      }
+      function ensureRowCount(n){
+        let cnt = tbody.querySelectorAll('tr').length;
+        while(cnt < n){ addRow(); cnt = tbody.querySelectorAll('tr').length; }
+        while(cnt > n){ tbody.lastElementChild?.remove(); cnt = tbody.querySelectorAll('tr').length; }
+        reindexAll();
+      }
+      // Helper to set values into an existing row (by column index for robustness)
+      function setRowValues(tr, data){
+        const norm = (k)=> String(k||'').replace(/\s+/g,'').replace(/[_.:,]/g,'').toLowerCase();
+        const rmap = new Map(Object.keys(data||{}).map(k => [norm(k), data[k]]));
+        if(DEBUG){ try{ console.log('[전월초안][row] start'); }catch(e){} }
+        for(const f of FIELDS){
+          const label = LABELS.get(f) || f;
+          const col = (typeof getColIndexByField === 'function') ? getColIndexByField(f) : null;
+          let target = null;
+          if(col !== null){
+            target = tr.querySelector(`input[data-col="${col}"]`);
+          }
+          // Fallback: try ends-with name selector
+          if(!target){
+            target = tr.querySelector(`[name$='[${CSS.escape(f)}]']`) || tr.querySelector(`[name$='[${CSS.escape(label)}]']`);
+          }
+          if(!target){
+            if(DEBUG){ try{ console.log('[전월초안][miss]', { field:f, label, col }); }catch(e){} }
+            continue;
+          }
+          let v = (data[f] !== undefined) ? data[f] : data[label];
+          if(v === undefined){ v = rmap.get(norm(f)); if(v === undefined) v = rmap.get(norm(label)); }
+          if(label==='월 시작일') v = monthStart();
+          if(label==='월 말일') v = monthEnd();
+          if(label==='월 총 일수') v = daysInMonth(YEAR, MONTH);
+          if(target.type === 'checkbox'){
+            target.checked = !!v;
+          }else{
+            target.value = (v===undefined || v===null) ? '' : v;
+          }
+          attachNumericHandlers(target, f);
+          try{ target.dispatchEvent(new Event('input', { bubbles:true })); }catch(e){}
+          if(DEBUG){
+            try{ console.log('[전월초안][set]', { col, field:f, label, v, value: target.value, type: target.type }); }catch(e){}
+          }
+        }
+        fillMonthDefaults(tr);
+        computeBooleans(tr);
+        tr.querySelectorAll('input').forEach(inp=> inp.classList.add('prefilled'));
+      }
+      // Ensure enough rows exist then fill values
+      ensureRowCount(nextRows.length);
+      const rowsEls = Array.from(tbody.querySelectorAll('tr'));
+      if(DEBUG){ try{ console.log('[전월초안] rowsEls length=', rowsEls.length); }catch(e){} }
+      nextRows.forEach((data, i)=>{ const tr = rowsEls[i]; if(tr) setRowValues(tr, data); });
+      if(DEBUG){
+        const first = rowsEls[0];
+        if(first){
+          const get = (name)=> first.querySelector(`[name$='[${name}]']`);
+          const snap = {
+            code: get('사원코드')?.value,
+            name: get('사원명')?.value,
+            ssn: get('주민등록번호')?.value,
+            wage: get('월급여')?.value,
+            base: get('기본급')?.value,
+            meal: get('식대')?.value,
+          };
+          console.log('[전월초안] UI 적용 확인(첫 행):', snap);
+        }
+      }
+      // Rebuild left list and KPIs
+      renumber();
+      scheduleKpiUpdate();
+      // bind events for new rows
+      document.querySelectorAll('#payroll-table tbody tr').forEach(tr=> bindInputEvents(tr));
+      // Rebuild split view/edit list to reflect new data
+      initSplit();
+      buildEditList();
+      // 사원목록이 비어있으면 한번 더 갱신 (안정화)
+      if(!document.querySelector('#empList tr')){
+        buildEditList();
+      }
+      // 안전장치: 여전히 비어있다면 테이블을 임시 표시하여 값 확인 가능
+      if(!document.querySelector('#empList tr')){
+        try{
+          const tw = document.querySelector('.table-wrap');
+          if(tw){ tw.style.display = 'block'; }
+        }catch(e){}
+      }
+      // 강제 첫 행 선택
+      const firstListRow = document.querySelector('#empList tr');
+      if(firstListRow){ selectEmp(0, firstListRow); }
+      alert(`전월 급여를 복사했습니다. 불러온 인원: ${nextRows.length} (전월 기준 퇴사자 ${filteredResigned}, 빈행 제외 ${filteredEmpty})`);
+    }catch(e){
+      console.error(e); alert('전월 초안 생성 중 오류');
+    }
+  }
+
+
+  function rowFillMonth(btn){ const tr = btn.closest('tr'); fillMonthDefaults(tr); scheduleKpiUpdate(); }
+  function doRound(n, to, mode){
+    const t = Math.max(1, Number(to)||1);
+    const x = Number(n)||0;
+    if(!isFinite(x)) return 0;
+    const q = x / t;
+    if(mode==='floor') return Math.floor(q) * t;
+    if(mode==='ceil') return Math.ceil(q) * t;
+    return Math.round(q) * t;
+  }
+  function round10(n){ return doRound(n, 10, 'round'); }
+  function parseMoney(input){ if(!input) return 0; const s = String(input.value||'').replace(/,/g,'').trim(); const v = Number(s||0); return isFinite(v)? v : 0; }
+  function markNegative(el, val){
+    try{
+      const n = Number(String(val ?? (el?.value||'')).toString().replace(/,/g,'').trim()||0);
+      if(isFinite(n) && n < 0){ el?.classList?.add('neg'); } else { el?.classList?.remove('neg'); }
+    }catch(_){ try{ el?.classList?.remove('neg'); }catch(_e){} }
+  }
+  // Update an input with money value. If options.silent is true, do not fire synthetic input event.
+  function setMoney(input, value, options){
+    if(window.PayrollDOM && PayrollDOM.setMoney){ try{ return PayrollDOM.setMoney(input, value, options); }catch(_){ } }
+    if(!input) return;
+    const raw = String(Math.round(Number(value)||0));
+    try{ input.value = (input.type==='number') ? raw : formatNumeric(raw); }catch(e){ input.value = raw; }
+    try{ markNegative(input, raw); }catch(_){ }
+    if(!(options && options.silent)){
+      try{ input.dispatchEvent(new Event('input', { bubbles:true })); }catch(_){ }
+    }
+  }
+  function getInputByNames(tr, names){
+    for(const n of names){ const el = getInputInRow(tr, n); if(el) return el; }
+    return null;
+  }
+  function setMoneyByNames(tr, names, value, silent){
+    if(window.PayrollDOM && PayrollDOM.setMoneyByNames){ try{ return PayrollDOM.setMoneyByNames(tr, names, value, silent); }catch(_){ } }
+    setMoney(getInputByNames(tr, names), value, { silent: !!silent });
+  }
+  function getInputInRow(tr, field){
+    if(window.PayrollDOM && PayrollDOM.getInputInRow){ try{ return PayrollDOM.getInputInRow(tr, field, getColIndexByField); }catch(_){ } }
+    const col = getColIndexByField(field);
+    if(col!==null){ const el = tr.querySelector(`input[data-col="${col}"]`); if(el) return el; }
+    try{ return tr.querySelector(`[name$='[${CSS.escape(field)}]']`); }catch(_){ return tr.querySelector(`[name$='[${field}]']`); }
+  }
+  const DEDUCTION_FIELDS = new Set([
+    '국민연금','건강보험','장기요양보험','고용보험','소득세','지방소득세',
+    // synonyms
+    '건강보험료','장기요양보험료','고용보험료','장기요양'
+  ]);
+  function computeDeductions(tr){
+    if(window.PayrollCalc && window.PayrollCalc.computeDeductions){ return window.PayrollCalc.computeDeductions(tr); }
+  }
+  // 계산 버튼: 부가 계산까지 포함
+  function rowCompute(btn){ const tr = btn.closest('tr'); computeBooleans(tr); computeDeductions(tr); scheduleKpiUpdate(); }
+  function computeAll(){ document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{ computeBooleans(tr); computeDeductions(tr); }); scheduleKpiUpdate(); }
+  function fillMonthAll(){ document.querySelectorAll('#payroll-table tbody tr').forEach(fillMonthDefaults); scheduleKpiUpdate(); }
+
+  // KPI helpers
+  const TABLE_META = (function(){
+
+    const tbl = document.getElementById('payroll-table');
+    const cols = JSON.parse(tbl.dataset.columns);
+    const numeric = new Set(cols.filter(c=> c[2]==='number').map(c=> c[0]));
+    const map = new Map(cols.map((c,i)=> [c[0], { idx:i, label:c[1], type:c[2] }]));
+    return { cols, numeric, map };
+  })();
+
+const NUMERIC_FIELDS = TABLE_META.numeric;
+function isNumericField(field){
+  return field && NUMERIC_FIELDS.has(field);
+}
+function sanitizeNumeric(value){ try{ return (window.PayrollUtils && window.PayrollUtils.sanitizeNumeric(value)) || String(value||'').replace(/,/g,''); }catch(e){ return String(value||'').replace(/,/g,''); } }
+function formatNumeric(value){ try{ return (window.PayrollUtils && window.PayrollUtils.formatNumeric(value)) || String(value||''); }catch(e){ return String(value||''); } }
+  function attachNumericHandlers(input, field){
+    if(!isNumericField(field) || input.dataset.numericBound === '1') return;
+    input.dataset.numericBound = '1';
+    if(input.type !== 'number'){
+      input.value = formatNumeric(input.value);
+      try{ markNegative(input); }catch(_){ }
+      input.addEventListener('focus', ()=>{ input.value = sanitizeNumeric(input.value); input.select?.(); });
+      input.addEventListener('blur', ()=>{ input.value = formatNumeric(input.value); try{ markNegative(input); }catch(_){ } });
+    } else {
+      input.setAttribute('step','1');
+      input.addEventListener('focus', ()=>{ input.select?.(); });
+      input.addEventListener('blur', ()=>{ try{ markNegative(input); }catch(_){ } });
+    }
+    input.addEventListener('input', ()=>{ try{ markNegative(input); }catch(_){ } });
+  }
+
+;
+
+  // ---------------- 주민등록번호 유틸리티 ----------------
+  function ssnDigits(value){
+    return String(value||'').replace(/[^0-9]/g,'').slice(0,13);
+  }
+  function formatSsn(value){
+    const d = ssnDigits(value);
+    if(d.length <= 6) return d;
+    return d.slice(0,6) + '-' + d.slice(6);
+  }
+  function daysInMonthSimple(y, m){
+    try{ return new Date(y, m, 0).getDate(); }catch(e){ return 31; }
+  }
+  function validateSsn(value){
+    const d = ssnDigits(value);
+    if(d.length !== 13) return false;
+    const yy = parseInt(d.slice(0,2),10);
+    const mm = parseInt(d.slice(2,4),10);
+    const dd = parseInt(d.slice(4,6),10);
+    if(!(mm>=1 && mm<=12)) return false;
+    const baseYear = 2000 + (isFinite(yy)? yy : 0);
+    if(!(dd>=1 && dd<=daysInMonthSimple(baseYear, mm))) return false;
+    const w = [2,3,4,5,6,7,8,9,2,3,4,5];
+    let sum = 0;
+    for(let i=0;i<12;i++) sum += parseInt(d[i],10) * w[i];
+    const mod = 11 - (sum % 11);
+    const check = mod % 10;
+    return check === parseInt(d[12],10);
+  }
+  function setSsnValidity(input){
+    const d = ssnDigits(input.value);
+    const valid = d.length===0 || (d.length===13 && validateSsn(input.value));
+    if(!valid){ input.classList.add('invalid-ssn'); input.title = '주민등록번호 검증 실패'; }
+    else { input.classList.remove('invalid-ssn'); input.removeAttribute('title'); }
+  }
+  function attachSsnHandlers(input){
+    if(input.dataset.ssnBound === '1') return;
+    input.dataset.ssnBound = '1';
+    try{
+      input.value = formatSsn(input.value);
+      setSsnValidity(input);
+    }catch(e){}
+    input.addEventListener('input', ()=>{
+      try{
+        const f = formatSsn(input.value);
+        if(input.value !== f){ input.value = f; }
+        setSsnValidity(input);
+      }catch(e){}
+    });
+    input.addEventListener('blur', ()=>{ try{ input.value = formatSsn(input.value); setSsnValidity(input); }catch(e){} });
+    input.addEventListener('keydown', (e)=>{
+      if(e.key === 'Enter'){
+        try{ input.value = formatSsn(input.value); setSsnValidity(input); }catch(e){}
+      }
+    });
+    input.addEventListener('paste', ()=>{ setTimeout(()=>{ try{ input.value = formatSsn(input.value); setSsnValidity(input); }catch(e){} }, 0); });
+  }
+
+  function getColIndexByField(field){
+    const meta = TABLE_META.map.get(field); return meta? meta.idx : null;
+  }
+  function sumField(field){
+    const col = getColIndexByField(field); if(col===null) return 0;
+    let s = 0;
+    document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{
+      if(tr.style.display==='none') return;
+      const input = tr.querySelector(`input[data-col="${col}"]`);
+      if(!input) return; const raw = sanitizeNumeric(input.value||''); const v = raw === '' ? 0 : Number(raw);
+      if(!isNaN(v)) s += v;
+    });
+    return s;
+  }
+  function countPeople(){
+    let key = '사원명'; if(!TABLE_META.map.has(key)) key = '사원코드';
+    const col = getColIndexByField(key); if(col===null) return 0;
+    let c = 0;
+    document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{
+      if(tr.style.display==='none') return;
+      const input = tr.querySelector(`input[data-col="${col}"]`);
+      if(input && String(input.value||'').trim() !== '') c++;
+    });
+    return c;
+  }
+  // Debounced KPI updater to avoid excessive recalculation during typing
+  const scheduleKpiUpdate = (window.PayrollUtils && window.PayrollUtils.createRafScheduler(updateKpis)) || (function(){
+    let scheduled = false; const tick = (window.requestAnimationFrame || function(cb){ return setTimeout(cb, 0); });
+    return function(){ if(scheduled) return; scheduled = true; tick(()=>{ scheduled = false; try{ updateKpis(); }catch(_){ } }); };
+  })();
+
+  function updateKpis(){
+    const count = countPeople();
+    document.getElementById('kpiCount').textContent = count.toLocaleString('ko-KR');
+
+    // main field selection
+    const sel = document.getElementById('kpiFieldSelect');
+    const mainField = sel.value || '월급여';
+    const mainSum = sumField(mainField) || (mainField==='월급여' ? sumField('기본급') : 0);
+    document.getElementById('kpiSum').textContent = mainSum.toLocaleString('ko-KR');
+
+    // 전직원 급여합계/차인지급액 계산: 분류된 항목 기준 합산
+    const groups = classify();
+    let totalPay = 0;
+    (groups.earnings||[]).forEach(([f])=>{ totalPay += sumField(f)||0; });
+    let totalDeduct = 0;
+    (groups.deductions||[]).forEach(([f])=>{ totalDeduct += sumField(f)||0; });
+    const net = totalPay - totalDeduct;
+    document.getElementById('kpiAllowance').textContent = totalPay.toLocaleString('ko-KR');
+    document.getElementById('kpiDeduct').textContent = net.toLocaleString('ko-KR');
+    // 하단 전직원 합계 영역도 업데이트
+    try{
+      document.getElementById('grandEarnings').textContent = totalPay.toLocaleString('ko-KR');
+      document.getElementById('grandDeductions').textContent = totalDeduct.toLocaleString('ko-KR');
+      document.getElementById('grandNet').textContent = net.toLocaleString('ko-KR');
+    }catch(_){ }
+
+    // status counts
+    const statusFields = { join:'월 중도입사', leave:'월 중도퇴사', onleave:'휴직중' };
+    Object.entries(statusFields).forEach(([key, field])=>{
+      const col = getColIndexByField(field); let n=0;
+      if(col!==null){
+        document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{
+          if(tr.style.display==='none') return;
+          const input = tr.querySelector(`input[type="checkbox"][data-col="${col}"]`);
+          if(input && input.checked) n++;
+        });
+      }
+      const id = key==='join'? 'kpiJoin' : key==='leave'? 'kpiLeave' : 'kpiOnLeave';
+      const el = document.getElementById(id); if(el) el.textContent = n;
+    });
+
+    // numeric column totals into tfoot
+    document.querySelectorAll('#payroll-table tfoot [data-sum-for]').forEach(td=>{
+      const col = td.dataset.sumFor; let s=0;
+      document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{
+        if(tr.style.display==='none') return;
+        const input = tr.querySelector(`input[data-col="${col}"]`);
+        if(!input) return; const v = parseInt(String(input.value||'').replace(/,/g,''),10);
+        if(!isNaN(v)) s += v;
+      });
+      td.textContent = s.toLocaleString('ko-KR');
+    });
+  }
+
+  function populateKpiFieldSelect(){
+    const sel = document.getElementById('kpiFieldSelect');
+    sel.innerHTML='';
+    TABLE_META.cols.forEach(([field,label,typ])=>{
+      if(typ==='number'){
+        const opt = document.createElement('option'); opt.value = field; opt.textContent = label; sel.appendChild(opt);
+      }
+    });
+    if(TABLE_META.map.has('월급여')) sel.value='월급여';
+    else if(TABLE_META.map.has('기본급')) sel.value='기본급';
+    sel.addEventListener('change', updateKpis);
+  }
+
+  function applyRowFilter(){
+    const q = (document.getElementById('rowSearch')?.value || '').trim().toLowerCase();
+    const key = TABLE_META.map.has('사원명')? '사원명' : (TABLE_META.map.has('사원코드')? '사원코드' : null);
+    const col = key? getColIndexByField(key) : null;
+    document.querySelectorAll('#payroll-table tbody tr').forEach(tr=>{
+      if(!q || col===null){ tr.style.display=''; return; }
+      const input = tr.querySelector(`input[data-col="${col}"]`);
+      const txt = (input?.value || '').toLowerCase();
+      tr.style.display = txt.includes(q) ? '' : 'none';
+    });
+    renumber(); updateKpis();
+  }
+
+  // Column view toggling
+  const ESSENTIAL_FIELDS = {{ ['사원코드','사원명','주민등록번호','입사일','월급여','기본급','식대','비고'] | tojson }};
+  const groupState = { basic:true, pay:true, allowance:true, deduct:true, status:true, misc:true };
+  function setColumnHidden(col, hidden){
+    const scope = document.getElementById('payroll-table');
+    if(!scope) return;
+    scope.querySelectorAll(`[data-col="${col}"]`).forEach(el=>{ el.style.display = hidden ? 'none' : ''; });
+  }
+  function showAll(){
+    document.querySelectorAll('#payroll-table [data-col]').forEach(el=> el.style.display='');
+    document.querySelectorAll('.chip[data-g]').forEach(ch=> ch.classList.remove('off'));
+    Object.keys(groupState).forEach(k=> groupState[k]=true);
+  }
+  function showEssential(){
+    const set = new Set(ESSENTIAL_FIELDS);
+    document.querySelectorAll('#payroll-table thead th[data-col]').forEach(th=>{
+      const col = th.dataset.col; const field = th.dataset.field;
+      const hide = !set.has(field);
+      setColumnHidden(col, hide);
+    });
+  }
+  function toggleGroup(code, btn){
+    const headers = document.querySelectorAll(`#payroll-table thead th[data-group="${code}"]`);
+    let makingHidden = null;
+    headers.forEach(th=>{
+      const col = th.dataset.col;
+      const isHidden = th.style.display==='none';
+      if(makingHidden===null) makingHidden = !isHidden; // toggle based on first
+      setColumnHidden(col, makingHidden);
+    });
+    if(btn){ btn.classList.toggle('off', makingHidden); }
+    groupState[code] = !makingHidden;
+  }
+
+  // Auto-fit/배율 제거 (피드백 반영)
+
+  // Presets removed per feedback (use 필수/전체만)
+
+  // Column resize
+  (function(){
+    const headers = document.querySelectorAll('#payroll-table thead th[data-col]');
+    const wrap = document.querySelector('.table-wrap');
+    let dragging = null;
+    function setColWidth(col, px){
+      const th = document.querySelector(`#payroll-table thead th[data-col="${col}"]`);
+      if(!th) return; th.style.width = px+'px';
+      document.querySelectorAll(`#payroll-table tbody td [data-col="${col}"]`).forEach(inp=>{
+        const td = inp.closest('td'); if(td) td.style.width = px+'px';
+      });
+    }
+    function saveWidth(field, px){
+      try{ localStorage.setItem(nsKey('payroll_colw_'+field), String(px)); }catch(e){}
+    }
+    function loadWidths(){
+      headers.forEach(th=>{
+        const field = th.dataset.field; const w = localStorage.getItem(nsKey('payroll_colw_'+field));
+        if(w){ const col = th.dataset.col; setColWidth(col, parseInt(w,10)); }
+      });
+    }
+    function onDown(e){
+      const handle = e.target.closest('.col-resizer'); if(!handle) return;
+      const th = handle.parentElement; const startX = e.clientX; const startW = th.offsetWidth; const col = th.dataset.col; const field = th.dataset.field;
+      dragging = { col, field, startX, startW };
+      document.body.style.cursor = 'col-resize'; e.preventDefault();
+    }
+    function onMove(e){
+      if(!dragging) return; const dx = e.clientX - dragging.startX; const w = Math.max(80, dragging.startW + dx);
+      setColWidth(dragging.col, w);
+    }
+    function onUp(e){
+      if(!dragging) return; const th = document.querySelector(`#payroll-table thead th[data-col="${dragging.col}"]`); const w = th ? th.offsetWidth : dragging.startW;
+      saveWidth(dragging.field, w); dragging = null; document.body.style.cursor = '';
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    loadWidths();
+  })();
+
+  // Split view only (본표 숨김)
+  let VIEW_MODE = 'split';
+  function setViewMode(mode){
+    VIEW_MODE = 'split';
+    document.getElementById('splitView').style.display = 'block';
+    const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
+    initSplit();
+  }
+  // 기본정보 패널(사원코드/사원명/입퇴사/휴직일) 표시 토글 (기본: 표시)
+  const BASIC_INFO_KEY = nsKey('split_show_basic_info');
+  function getShowBasicInfo(){ try{ const v = localStorage.getItem(BASIC_INFO_KEY); return v===null ? true : v==='1'; }catch(e){ return true; } }
+  function setShowBasicInfo(v){ try{ localStorage.setItem(BASIC_INFO_KEY, v ? '1':'0'); }catch(e){} }
+  function toggleBasicInfo(){ const cur = getShowBasicInfo(); setShowBasicInfo(!cur); const active = document.querySelector('#empList tr.active'); const idx = active ? parseInt(active.dataset.idx,10) : 0; selectEmp(idx, active); }
+  const GROUP_MAP_KEY = nsKey('payroll_group_map_v1');
+  const ALIAS_MAP_KEY = nsKey('payroll_group_alias_v1');
+  const EXCLUDED_META_FIELDS = ['사원코드','사원명','입사일','퇴사일','휴직일','휴직종료일','월 시작일','월 말일','월 총 일수','근무일수','부양가족수','기준보수월액'];
+
+  // Insurance inclusion config: which earnings count for each insurance base
+  // Delegate state helpers to global module (fallback to localStorage if absent)
+  function loadInsIncludeMap(){ try{ return (window.PayrollState && window.PayrollState.loadInsIncludeMap()) || { nps:{}, nhis:{}, ei:{} }; }catch(e){ return { nps:{}, nhis:{}, ei:{} }; }
+  }
+  function saveInsIncludeMap(m){ try{ (window.PayrollState && window.PayrollState.saveInsIncludeMap(m)); }catch(e){} }
+  function loadExemptOverrides(){ try{ return (window.PayrollState && window.PayrollState.loadExemptOverrides()) || {}; }catch(e){ return {}; } }
+  function saveExemptOverrides(m){ try{ (window.PayrollState && window.PayrollState.saveExemptOverrides(m)); }catch(e){} }
+
+  // 좌측 사원 목록: 열 크기 조절 기능 비활성화 (고정 기본 폭 사용)
+
+  function loadGroupMap(){
+    try {
+      const raw = JSON.parse(localStorage.getItem(GROUP_MAP_KEY)||'{}');
+      EXCLUDED_META_FIELDS.forEach(k=> delete raw[k]);
+      return raw;
+    } catch(e){
+      return {};
+    }
+  }
+  function saveGroupMap(m){
+    const sanitized = { ...m };
+    EXCLUDED_META_FIELDS.forEach(k=> delete sanitized[k]);
+    try { localStorage.setItem(GROUP_MAP_KEY, JSON.stringify(sanitized)); } catch(e){}
+  }
+  function loadAliasMap(){
+    try{
+      const raw = JSON.parse(localStorage.getItem(ALIAS_MAP_KEY)||'{}');
+      return raw && typeof raw==='object' ? raw : {};
+    }catch(e){ return {}; }
+  }
+  function saveAliasMap(m){
+    try{ localStorage.setItem(ALIAS_MAP_KEY, JSON.stringify(m||{})); }catch(e){}
+  }
+  function defaultGroupFor(label){
+    if(/감면/.test(label)) return 'none';
+    if(['기본급','월급여','상여','식대','자가운전보조금','시간외수당','연장근로수당','현장수당','직급수당'].includes(label)) return 'earn';
+    if(/수당/.test(label)) return 'earn';
+    if(/세|연금|보험|공제|정산/.test(label)) return 'deduct';
+    return 'none';
+  }
+  function normalizeLabel(s){
+    try{
+      return String(s||'')
+        .normalize('NFKC')
+        .replace(/[\u00A0\u3000]/g, ' ')
+        .replace(/[\u200B-\u200D]/g, '')
+        .trim()
+        .replace(/\s+/g, ' ');
+    }catch(_){ return (s||''); }
+  }
+  function classify(){
+    const cols = TABLE_META.cols; const map = loadGroupMap(); const alias = loadAliasMap();
+    const earnings = []; const deductions = [];
+    const EXCLUDE = new Set(EXCLUDED_META_FIELDS);
+    const seenEarn = new Set();
+    const seenDed = new Set();
+    cols.forEach(([field,label,typ])=>{
+      if(typ!=='number') return; if(EXCLUDE.has(label)) return; const g = map[field] || defaultGroupFor(label);
+      const disp = alias[field] && String(alias[field]).trim() ? alias[field] : label;
+      // Deduplicate by field KEY (not display label) to avoid
+      // losing distinct fields that share the same label/alias
+      const key = String(field);
+      if(g==='earn'){
+        if(seenEarn.has(key)) return; seenEarn.add(key); earnings.push([field,disp,typ]);
+      } else if(g==='deduct'){
+        if(seenDed.has(key)) return; seenDed.add(key); deductions.push([field,disp,typ]);
+      }
+    });
+    return { earnings, deductions };
+  }
+  function buildList(){ buildEditList(); }
+  function syncListRow(idx){
+    const row = document.querySelector(`#empList tr[data-idx='${idx}']`); if(!row) return;
+    const base = document.querySelectorAll('#payroll-table tbody tr')[idx]; if(!base) return;
+    const get = (name)=> base.querySelector(`[name$='[${name}]']`);
+    row.querySelectorAll('input.list-input').forEach(inp=>{
+      const field = inp.dataset.field; const src = get(field);
+      if(src && document.activeElement !== inp){
+        const val = src.value || '';
+        inp.value = isNumericField(field) ? formatNumeric(val) : val;
+      }
+    });
+  }
+  function bindProxy(input, base, field, typ){
+    if(!base){ input.disabled = true; return; }
+    if(base.type==='checkbox'){
+      input.type = 'checkbox';
+      input.checked = base.checked;
+      input.addEventListener('input', ()=>{ if(input.dataset.comp==='1') return; base.checked = !!input.checked; updateSplitSummary(); });
+      base.addEventListener('change', ()=>{ input.checked = base.checked; updateSplitSummary(); });
+      return;
+    }
+    const isNum = (typ==='number') && isNumericField(field);
+    const syncFromBase = ()=>{
+      const val = base.value || '';
+      if(isNum){
+        input.value = (input.type==='number') ? sanitizeNumeric(val) : formatNumeric(val);
+        try{ markNegative(input, input.value); }catch(_){ }
+      } else {
+        input.value = val;
+      }
+    };
+    syncFromBase();
+    try{ if(isNum) attachNumericHandlers(input, field); }catch(e){}
+    if(isNum){
+      input.addEventListener('focus', ()=>{ input.value = sanitizeNumeric(input.value); input.select?.(); });
+      input.addEventListener('blur', ()=>{ input.value = formatNumeric(input.value); try{ if(!DEDUCTION_FIELDS.has(field)) computeDeductions(base.closest('tr')); }catch(_){} scheduleKpiUpdate(); updateSplitSummary(); });
+    }
+    input.addEventListener('input', (e)=>{
+      if(e.isComposing) return;
+      const val = isNum ? sanitizeNumeric(input.value) : input.value;
+      base.value = val;
+      if(isNum){ input.value = (input.type==='number') ? val : val; try{ markNegative(input, val); }catch(_){ } }
+      if(isNum && !DEDUCTION_FIELDS.has(field)){
+        const row = base.closest('tr');
+        try{ computeDeductions(row); }catch(_){ }
+      }
+      scheduleKpiUpdate(); syncListRow(currentIdx); updateSplitSummary();
+    });
+    input.addEventListener('compositionend', ()=>{
+      const val = isNum ? sanitizeNumeric(input.value) : input.value;
+      base.value = val;
+      if(isNum) input.value = val;
+      if(isNum && !DEDUCTION_FIELDS.has(field)){
+        const row = base.closest('tr');
+        try{ computeDeductions(row); }catch(_){ }
+      }
+      scheduleKpiUpdate(); syncListRow(currentIdx); updateSplitSummary();
+    });
+    base.addEventListener('input', ()=>{ syncFromBase(); updateSplitSummary(); });
+
+    // Enter navigation across earnings/deductions proxies + commit compute
+    input.addEventListener('keydown', (e)=>{
+      if(e.key !== 'Enter') return;
+      e.preventDefault();
+      try{ if(isNum && !DEDUCTION_FIELDS.has(field)) computeDeductions(base.closest('tr')); }catch(_){}
+      scheduleKpiUpdate(); updateSplitSummary();
+      const visible = Array.from(document.querySelectorAll('#earnTable input, #dedTable input'))
+        .filter(el=> el.offsetParent !== null && !el.disabled);
+      const i = visible.indexOf(input);
+      if(e.shiftKey){
+        const t = visible[i>0? i-1 : 0]; if(t){ t.focus(); t.select?.(); }
+      } else {
+        const t = visible[i>=0 && i<visible.length-1 ? i+1 : visible[visible.length-1]]; if(t){ t.focus(); t.select?.(); }
+      }
+    });
+  }
+  let currentIdx = 0;
+  function selectEmp(idx, rowEl){
+    currentIdx = idx;
+    document.querySelectorAll('#empList tr').forEach(tr=> tr.classList.toggle('active', tr===rowEl));
+    const base = document.querySelectorAll('#payroll-table tbody tr')[idx]; if(!base) return;
+    document.getElementById('selName').textContent = (base.querySelector(`[name$='[사원명]']`)?.value||'') || (base.querySelector(`[name$='[사원코드]']`)?.value||'');
+    const bi = document.getElementById('basicInfo');
+    if(bi){
+      if(getShowBasicInfo()){ bi.style.display='grid'; buildBasicInfo(base); }
+      else { bi.style.display='none'; bi.innerHTML=''; }
+    }
+    const { earnings, deductions } = classify();
+    const earnT = document.getElementById('earnTable'); const dedT = document.getElementById('dedTable');
+    const row = (field,label,typ)=>{
+      const baseInput = base.querySelector(`[name$='[${field}]']`);
+      const proxy = document.createElement('input');
+      const isNum = typ==='number';
+      proxy.type = isNum ? 'text' : (typ==='date' ? 'date' : 'text');
+      if(isNum){ proxy.setAttribute('inputmode','numeric'); }
+      proxy.style.width='100%';
+      bindProxy(proxy, baseInput, field, typ);
+      const tr = document.createElement('tr');
+      const td1 = document.createElement('td'); td1.textContent = label; const td2 = document.createElement('td'); td2.appendChild(proxy);
+      tr.appendChild(td1); tr.appendChild(td2); return tr;
+    };
+    earnT.innerHTML = ''; dedT.innerHTML='';
+    earnings.forEach(([f,l,t])=> earnT.appendChild(row(f,l,t)));
+    deductions.forEach(([f,l,t])=> dedT.appendChild(row(f,l,t)));
+    updateSplitSummary();
+  }
+  function buildBasicInfo(base){
+    const c = document.getElementById('basicInfo'); if(!c) return; c.innerHTML='';
+    const fields = [
+      ['사원코드','text'],
+      ['사원명','text'],
+      ['입사일','date'],
+      ['퇴사일','date'],
+      ['휴직일','date'],
+      ['휴직종료일','date'],
+      ['부양가족수','number'],
+      ['기준보수월액','number']
+    ];
+    fields.forEach(([field,typ])=>{
+      const baseInput = base.querySelector(`[name$='[${field}]']`);
+      if(!baseInput) return;
+      const wrap = document.createElement('div'); wrap.className='pair';
+      const lab = document.createElement('label'); lab.textContent = field; wrap.appendChild(lab);
+      const inp = document.createElement('input'); inp.type = (typ==='date')? 'date' : (typ==='number' ? 'number':'text'); inp.value = baseInput.value || '';
+      if(field==='기준보수월액' && !IS_ADMIN){ inp.disabled = true; }
+      if(typ==='number'){ inp.setAttribute('inputmode','numeric'); inp.setAttribute('step','1'); }
+      inp.addEventListener('input', (e)=>{ if(e.isComposing) return; baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
+      inp.addEventListener('compositionend', ()=>{ baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
+      baseInput.addEventListener('input', ()=>{ inp.value = baseInput.value; });
+      wrap.appendChild(inp);
+      c.appendChild(wrap);
+    });
+  }
+  function updateSplitSummary(){
+    const base = document.querySelectorAll('#payroll-table tbody tr')[currentIdx]; if(!base) return;
+    const { earnings, deductions } = classify();
+    const sum = (arr)=> arr.reduce((acc,[f,l,t])=>{ const el = base.querySelector(`[name$='[${f}]']`); const raw = sanitizeNumeric(el?.value||''); const v = raw === '' ? 0 : Number(raw); return acc + (isNaN(v)?0:v); },0);
+    const earn = sum(earnings); const ded = sum(deductions); const net = earn - ded;
+    const eEl = document.getElementById('sumEarnings');
+    const dEl = document.getElementById('sumDeductions');
+    const nEl = document.getElementById('sumNet');
+    eEl.textContent = earn.toLocaleString('ko-KR'); eEl.classList.toggle('neg', earn < 0);
+    dEl.textContent = ded.toLocaleString('ko-KR'); dEl.classList.toggle('neg', ded < 0);
+    nEl.textContent = net.toLocaleString('ko-KR'); nEl.classList.toggle('neg', net < 0);
+  }
+  // Editable list in left panel
+  function availableEditFields(){
+    // 헤더(th[data-field]) 순서를 그대로 사용해 본문 셀을 구성
+    const out = [];
+    const typeOf = (f)=>{
+      if(f === '주민등록번호') return 'text';
+      if(f === '사원코드' || f === '사원명') return 'text';
+      if(['입사일','퇴사일','휴직일','휴직종료일'].includes(f)) return 'date';
+      return 'text';
+    };
+    document.querySelectorAll('#empHead th[data-field]').forEach(th=>{
+      const field = th.dataset.field; out.push([field, typeOf(field)]);
+    });
+    return out;
+  }
+  function buildEditList(){
+    const tbody = document.getElementById('empList'); if(!tbody) return;
+    const sEl = document.getElementById('splitSearch');
+    // IME 조합 중에는 필터를 적용하지 않고 대기했다가 조합 종료 시 반영
+    if(sEl && sEl.dataset && sEl.dataset.comp==='1') return;
+    const q = (sEl?.value||'').trim().toLowerCase();
+    const fields = availableEditFields();
+    const rows = [];
+    document.querySelectorAll('#payroll-table tbody tr').forEach((tr, idx)=>{
+      const get = (name)=> tr.querySelector(`[name$='[${name}]']`);
+      const code = get('사원코드')?.value || '';
+      const name = get('사원명')?.value || '';
+      if(q && !(String(code).toLowerCase().includes(q) || String(name).toLowerCase().includes(q))) return;
+      let cells = `<td>${idx+1}</td>`;
+      fields.forEach(([field,typ])=>{
+        const base = get(field);
+        const val = base ? base.value : '';
+        const type = typ==='number'? 'text' : typ==='date'? 'date' : 'text';
+        const attrs = type==='number' ? ' step="1" inputmode="numeric"' : '';
+        const style = field==='사원명' ? ' style="min-width:80px"' : (field==='주민등록번호' ? ' style="min-width:180px"' : (field==='사원코드' ? ' style="min-width:140px"' : ''));
+        const extra = field==='주민등록번호' ? ' placeholder="000000-0000000" inputmode="numeric"' : '';
+        const disabledAttr = ((typeof IS_CLOSED!=='undefined' && IS_CLOSED) || !base || (!IS_ADMIN && field==='사원코드')) ? ' disabled' : '';
+        cells += `<td><input class="list-input" type="${type}" data-field="${field}" value="${val||''}" oninput="if(event.isComposing) return; gridInputChanged(this)" oncompositionstart="this.dataset.comp='1'" oncompositionend="this.dataset.comp='' ; gridInputChanged(this)" ${attrs}${style}${extra}${disabledAttr}></td>`;
+      });
+      rows.push(`<tr data-idx="${idx}" onclick="rowSelect(event, ${idx}, this)">${cells}</tr>`);
+    });
+    tbody.innerHTML = rows.join('');
+    tbody.querySelectorAll('input.list-input').forEach(inp=>{ 
+      inp.style.width='100%'; 
+      attachNumericHandlers(inp, inp.dataset.field);
+      if(inp.dataset.field === '주민등록번호'){
+        try{ attachSsnHandlers(inp); }catch(e){}
+      }
+    });
+    // IME(한글) 입력 중간 상태를 안전하게 처리하여 값 동기화가 끊기지 않도록 보강
+    tbody.querySelectorAll('input.list-input').forEach(inp=>{
+      inp.addEventListener('compositionstart', ()=>{ inp.dataset.comp = '1'; });
+      inp.addEventListener('compositionend', ()=>{ inp.dataset.comp = ''; gridInputChanged(inp); });
+      inp.addEventListener('input', (e)=>{ if(e.isComposing || inp.dataset.comp==='1') return; gridInputChanged(inp); });
+    });
+    const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
+    if(active){ active.classList.add('active'); }
+  }
+
+function gridInputChanged(el){
+    if(el.dataset.comp==='1') return; // avoid IME mid-composition sync
+    const tr = el.closest('tr'); const idx = parseInt(tr?.dataset.idx||'0',10) || 0;
+    const field = el.dataset.field; const base = document.querySelectorAll('#payroll-table tbody tr')[idx];
+    if(!base) return; const input = base.querySelector(`[name$='[${field}]']`); if(!input) return;
+    let value = isNumericField(field) ? sanitizeNumeric(el.value) : el.value;
+    if(field === '주민등록번호'){
+      value = formatSsn(value);
+      el.value = value;
+      try{ setSsnValidity(el); setSsnValidity(input); }catch(e){}
+    }
+    input.value = isNumericField(field) ? value : value;
+    if(isNumericField(field)) el.value = formatNumeric(value);
+    try{
+      if(isNumericField(field) && !DEDUCTION_FIELDS.has(field)){
+        computeDeductions(base);
+      }
+    }catch(_){ }
+    scheduleKpiUpdate(); syncListRow(idx); updateSplitSummary();
+  }
+  function rowSelect(e, idx, el){ if(e.target && e.target.tagName==='INPUT') return; selectEmp(idx, el); }
+  function initSplit(){
+    buildEditList();
+    selectEmp(0, document.querySelector('#empList tr'));
+    const s = document.getElementById('splitSearch');
+    if(s){
+      s.addEventListener('input', (e)=>{ if(e.isComposing) return; buildEditList(); });
+      s.addEventListener('compositionstart', ()=>{ s.dataset.comp='1'; });
+      s.addEventListener('compositionend', ()=>{ s.dataset.comp=''; buildEditList(); });
+    }
+  }
+
+  // Keyboard navigation: Enter = move down same column
+  document.querySelectorAll('#payroll-table tbody tr').forEach(tr=> bindInputEvents(tr));
+  // 주민등록번호 초기 포맷/검증 일괄 적용
+  try{
+    document.querySelectorAll("#payroll-table input[data-field='주민등록번호']").forEach(el=>{ attachSsnHandlers(el); });
+  }catch(e){}
+  // 좌측 리스트 주민번호 포맷/검증 적용
+  try{
+    document.querySelectorAll("#empList input.list-input[data-field='주민등록번호']").forEach(el=>{ attachSsnHandlers(el); });
+  }catch(e){}
+  // Excel-like navigation in left list: Enter => move right, Shift+Enter => left
+  document.addEventListener('keydown', (e)=>{
+    const t = e.target;
+    if(!(t instanceof HTMLElement)) return;
+    if(!t.classList || !t.classList.contains('list-input')) return;
+    const row = t.closest('#empList tr'); if(!row) return;
+
+    const rowInputs = ()=> Array.from(row.querySelectorAll('input.list-input')).filter(el=> el.offsetParent !== null && !el.disabled);
+    const idxInRow = (arr, el)=> arr.indexOf(el);
+
+    if(e.key === 'Enter'){
+      e.preventDefault();
+      const inputs = rowInputs();
+      const i = idxInRow(inputs, t);
+      if(e.shiftKey && i > 0){ inputs[i-1].focus(); inputs[i-1].select?.(); return; }
+      if(i >=0 && i < inputs.length - 1){ inputs[i+1].focus(); inputs[i+1].select?.(); return; }
+      const nextRow = row.nextElementSibling;
+      if(nextRow){
+        const first = Array.from(nextRow.querySelectorAll('input.list-input')).find(el=> el.offsetParent !== null && !el.disabled);
+        if(first){ first.focus(); first.select?.(); }
+      }
+    }
+    if(e.key === 'ArrowRight' || e.key === 'ArrowLeft'){
+      const atStart = (t.selectionStart||0) === 0;
+      const atEnd = (t.selectionEnd||0) === (t.value||'').length;
+      const inputs = rowInputs();
+      const i = idxInRow(inputs, t);
+      if(e.key === 'ArrowRight' && atEnd && i < inputs.length-1){ e.preventDefault(); inputs[i+1].focus(); inputs[i+1].select?.(); }
+      if(e.key === 'ArrowLeft' && atStart && i > 0){ e.preventDefault(); inputs[i-1].focus(); inputs[i-1].select?.(); }
+    }
+    if(e.key === 'ArrowDown' || e.key === 'ArrowUp'){
+      e.preventDefault();
+      const isDown = e.key === 'ArrowDown';
+      const other = isDown ? row.nextElementSibling : row.previousElementSibling;
+      if(other){
+        const inputsOther = Array.from(other.querySelectorAll('input.list-input')).filter(el=> el.offsetParent !== null && !el.disabled);
+        const inputsCur = rowInputs();
+        const i = idxInRow(inputsCur, t);
+        const target = (i>=0 && i<inputsOther.length) ? inputsOther[i] : inputsOther[0];
+        if(target){ target.focus(); target.select?.(); }
+      }
+    }
+  }, true);
+
+  // Row copy from previous
+  const PROTECT_FIELDS = new Set(['사원코드','사원명','주민등록번호']);
+  function rowCopy(btn){
+    const tr = btn.closest('tr'); const prev = tr.previousElementSibling; if(!prev) return;
+    const prevInputs = prev.querySelectorAll('input');
+    prevInputs.forEach(p=>{
+      const name = p.getAttribute('name'); if(!name) return;
+      const m = name.match(/\[(.*?)\]$/); if(!m) return; const field = m[1];
+      if(PROTECT_FIELDS.has(field)) return;
+      const col = p.dataset.col;
+      const t = tr.querySelector(`input[data-col="${col}"]`);
+      if(!t) return;
+      if(p.type==='checkbox'){ t.checked = p.checked; } else { t.value = p.value; }
+    });
+    scheduleKpiUpdate();
+  }
+
+  // Paste modal for quick Excel paste (essential fields order)
+  function openPasteModal(){ if({{ 'true' if is_closed else 'false' }}) return; document.getElementById('pasteModal').style.display='flex'; document.getElementById('pasteBox').focus(); }
+  function closePasteModal(){ document.getElementById('pasteModal').style.display='none'; }
+  function handlePaste(){
+    const txt = document.getElementById('pasteBox').value.trim(); if(!txt){ closePasteModal(); return; }
+    const rows = txt.split(/\r?\n/).map(line=> line.split(/\t/));
+    const fields = ESSENTIAL_FIELDS.filter(f=> document.querySelector(`#payroll-table thead th[data-field="${f}"]`));
+    const tbody = document.querySelector('#payroll-table tbody');
+    let startRow = tbody.querySelectorAll('tr').length; // append after existing
+    rows.forEach((cols,i)=>{
+      addRow();
+      const tr = tbody.querySelector('#payroll-table tbody tr:last-child');
+      fields.forEach((field, j)=>{
+        const th = document.querySelector(`#payroll-table thead th[data-field="${field}"]`);
+        if(!th) return; const col = th.dataset.col; const inp = tr.querySelector(`input[data-col="${col}"]`);
+        if(!inp) return; const val = cols[j] ?? '';
+        if(inp.type==='checkbox'){ inp.checked = (String(val).trim().toLowerCase() in { '1':1, 'y':1, 'yes':1, 'true':1, 'on':1 }); }
+        else { inp.value = val; }
+      });
+    });
+    document.getElementById('pasteBox').value=''; closePasteModal();
+    scheduleKpiUpdate();
+    buildEditList();
+    const idx = document.querySelectorAll('#payroll-table tbody tr').length - 1;
+    const listRow = document.querySelector(`#empList tr[data-idx='${idx}']`);
+    if(listRow){ selectEmp(idx, listRow); }
+  }
+
+  // Density control
+  function setDensity(mode){
+    document.body.classList.remove('density-comfortable','density-dense');
+    if(mode==='comfortable') document.body.classList.add('density-comfortable');
+    if(mode==='dense') document.body.classList.add('density-dense');
+    localStorage.setItem(nsKey('payroll_density'), mode);
+  }
+  (function(){ const d = localStorage.getItem(nsKey('payroll_density')) || 'normal'; setDensity(d); })();
+
+  // 배율 기능 제거 (피드백 반영)
+
+  // 서버에서 비과세/계산방법 설정 로드(있으면 로컬 덮어쓰기) 후 한 번 재계산
+  (async function(){
+    try{
+      const r1 = await fetch(`/api/portal/${SLUG}/fields/exempt-config`);
+      const j1 = await r1.json();
+      if(r1.ok && j1 && j1.ok && j1.exempt){ saveExemptOverrides(j1.exempt); }
+    }catch(_){ }
+    try{
+      const r2 = await fetch(`/api/portal/${SLUG}/fields/calc-config`);
+      const j2 = await r2.json();
+      if(r2.ok && j2 && j2.ok && j2.include){
+        const incLocal = loadInsIncludeMap(); const incSrv = j2.include || {};
+        ['nhis','ei'].forEach(k=>{ incLocal[k] = incLocal[k] || {}; Object.keys(incSrv[k]||{}).forEach(f=>{ if(incSrv[k][f]) incLocal[k][f] = true; }); });
+        saveInsIncludeMap(incLocal);
+      }
+    }catch(_){ }
+    try{ computeAll(); }catch(_){ }
+  })();
+
+  // Row detail drawer logic
+  let CURRENT_ROW = null;
+  function rowDetail(btn){
+    const tr = btn.closest('tr'); CURRENT_ROW = tr; openRowDrawerFor(tr);
+  }
+  function openRowDrawer(){ document.getElementById('rowDrawer').style.display='block'; }
+  function closeRowDrawer(){ document.getElementById('rowDrawer').style.display='none'; CURRENT_ROW=null; }
+  function openRowDrawerFor(tr){
+    const table = document.getElementById('payroll-table');
+    const cols = JSON.parse(table.dataset.columns);
+    const body = document.getElementById('rowDrawerBody');
+    body.innerHTML = '';
+    cols.forEach((c, idx)=>{
+      const [field,label,typ] = c; const input = tr.querySelector(`input[name$='[${field}]']`);
+      const wrap = document.createElement('div');
+      const lab = document.createElement('label'); lab.textContent = label;
+      wrap.appendChild(lab);
+      let el;
+      if(typ==='checkbox'){
+        el = document.createElement('input'); el.type='checkbox'; el.checked = input?.checked || false;
+      }else if(typ==='date'){
+        el = document.createElement('input'); el.type='date'; el.value = input?.value || '';
+      }else if(typ==='number'){
+        el = document.createElement('input'); el.type='number'; el.value = input?.value || ''; el.inputMode='numeric'; el.step='1';
+      }else{
+        el = document.createElement('input'); el.type='text'; el.value = input?.value || '';
+      }
+      el.dataset.field = field; el.style.width='100%';
+      wrap.appendChild(el);
+      body.appendChild(wrap);
+    });
+    openRowDrawer();
+  }
+  function applyRowDrawer(){
+    if(!CURRENT_ROW) return; const body = document.getElementById('rowDrawerBody');
+    body.querySelectorAll('[data-field]').forEach(src=>{
+      const field = src.dataset.field;
+      const dst = CURRENT_ROW.querySelector(`input[name$='[${field}]']`);
+      if(!dst) return;
+      if(src.type==='checkbox'){ dst.checked = src.checked; } else { dst.value = src.value; }
+    });
+    closeRowDrawer();
+  }
+
+  populateKpiFieldSelect();
+  fillMonthAll();
+  renumber();
+  // Default to essential view + dense density if no user pref
+  try{
+    if(!localStorage.getItem(nsKey('payroll_density'))) setDensity('dense');
+  }catch(e){}
+  showEssential();
+  scheduleKpiUpdate();
+  // Load persisted 비과세 설정 from server and apply as defaults
+  (async function(){
+    try{
+      const res = await fetch(`/api/portal/${SLUG}/fields/exempt-config`);
+      const j = await res.json();
+      if(res.ok && j && j.ok && j.exempt){
+        saveExemptOverrides(j.exempt);
+        try{ computeAll(); }catch(_){ }
+      }
+    }catch(_){ /* ignore fetch error; fallback to local */ }
+  })();
+  const _search = document.getElementById('rowSearch'); if(_search){ _search.addEventListener('input', applyRowFilter); }
+  // Readonly lock when closed
+  const IS_CLOSED = {{ 'true' if is_closed else 'false' }};
+  if(IS_CLOSED){
+    try{
+      // Disable inputs inside form
+      document.querySelectorAll('#payrollForm input, #payrollForm button, #payrollForm select, #payrollForm textarea').forEach(el=>{
+        if(el.type === 'hidden') return; el.disabled = true;
+      });
+      // Hide row action buttons
+      document.querySelectorAll('#payroll-table tbody tr td button').forEach(btn=> btn.style.display='none');
+    }catch(e){}
+  }
+
+  // ------------------------------------------------------------------
+  // Unsaved changes guard: warn on close or navigation if not saved
+  // ------------------------------------------------------------------
+  (function(){
+    let DIRTY = false;
+    const markDirty = ()=> { DIRTY = true; window.__PAYROLL_DIRTY__ = true; };
+    const clearDirty = ()=> { DIRTY = false; window.__PAYROLL_DIRTY__ = false; };
+
+    // Delegate input/change events across dynamic rows but ignore search boxes
+    document.addEventListener('input', (e)=>{
+      const t = e.target;
+      if(!(t instanceof HTMLElement)) return;
+      if(t.closest('#payroll-table') || t.closest('#empList') || t.closest('#rowDrawer')){
+        if(t.id === 'splitSearch' || t.id === 'rowSearch' || t.id === 'pasteBox') return;
+        markDirty();
+      }
+    }, true);
+    document.addEventListener('change', (e)=>{
+      const t = e.target;
+      if(!(t instanceof HTMLElement)) return;
+      if(t.closest('#payroll-table') || t.closest('#empList') || t.closest('#rowDrawer')){
+        if(t.id === 'splitSearch' || t.id === 'rowSearch' || t.id === 'pasteBox') return;
+        markDirty();
+      }
+    }, true);
+
+    // Clear flag when saving the form
+    const form = document.getElementById('payrollForm');
+    if(form){
+      form.addEventListener('submit', (e)=>{
+        // SSN validation summary (non-blocking unless user cancels)
+        try{
+          const ssnInputs = document.querySelectorAll("#payroll-table input[data-field='주민등록번호']");
+          let invalidCount = 0;
+          ssnInputs.forEach(inp=>{
+            attachSsnHandlers(inp); // ensure formatting
+            const d = (inp.value||'').replace(/[^0-9]/g,'');
+            if(d.length>0 && d.length!==13) invalidCount++;
+            else if(d.length===13 && !validateSsn(inp.value)) invalidCount++;
+          });
+          if(invalidCount>0){
+            const ok = window.confirm(`주민등록번호 형식이 올바르지 않은 항목이 ${invalidCount}건 있습니다.\n그래도 저장하시겠습니까?`);
+            if(!ok){ e.preventDefault(); e.stopPropagation(); return; }
+          }
+        }catch(_){}
+        clearDirty();
+      });
+    }
+
+    // Warn on browser/tab close or URL change
+    window.addEventListener('beforeunload', (e)=>{
+      if(!DIRTY) return;
+      e.preventDefault();
+      e.returnValue = '';
+    });
+
+    // Intercept in-page link clicks: show custom modal when DIRTY
+    document.addEventListener('click', (e)=>{
+      const a = (e.target instanceof Element) ? e.target.closest('a[href]') : null;
+      if(!a) return;
+      const href = a.getAttribute('href') || '';
+      if(href.startsWith('#')) return;
+      // Excel 다운로드 등은 경고/저장 스킵
+      if(a.dataset && a.dataset.skipUnsaved === '1') return;
+      if(!DIRTY) return;
+      e.preventDefault(); e.stopPropagation();
+      openUnsavedModal(href);
+    }, true);
+    // expose helpers
+    window.__PAYROLL_MARK_DIRTY__ = markDirty;
+    window.__PAYROLL_CLEAR_DIRTY__ = clearDirty;
+  })();
+
+  // Save current form then navigate to target
+  function saveAndExit(targetUrl){
+    try{
+      const form = document.getElementById('payrollForm');
+      const next = document.getElementById('nextAfterSave');
+      if(next) next.value = targetUrl || 'home';
+      if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__();
+      form.submit();
+    }catch(e){
+      console.error('saveAndExit failed', e);
+      if(targetUrl){ location.href = targetUrl; }
+    }
+  }
+
+  // Attempt quick-save on page hide/close using sendBeacon or fetch keepalive
+  function tryQuickSaveBeacon(){
+    try{
+      const form = document.getElementById('payrollForm');
+      if(!form) return;
+      const fd = new FormData(form);
+      // Do not redirect after beacon save
+      fd.set('next', '');
+      const usp = new URLSearchParams();
+      for(const [k,v] of fd.entries()){
+        usp.append(k, typeof v === 'string' ? v : String(v));
+      }
+      try{ usp.set('csrf_token', (window.__CSRF__||'')); }catch(_){ }
+      const bodyStr = usp.toString();
+      const useBeacon = (!!navigator.sendBeacon) && !(window.API_BASE && String(window.API_BASE).trim());
+      if(useBeacon){
+        const blob = new Blob([bodyStr], { type: 'application/x-www-form-urlencoded;charset=UTF-8' });
+        navigator.sendBeacon(SAVE_URL, blob);
+      }else{
+        fetch(SAVE_URL, { method:'POST', body: usp, headers:{'Content-Type':'application/x-www-form-urlencoded'}, keepalive:true });
+      }
+    }catch(e){ /* ignore */ }
+  }
+
+  // Auto-save on tab close/navigation (cannot show custom UI here)
+  window.addEventListener('pagehide', (e)=>{ try{ if(window.__PAYROLL_DIRTY__) tryQuickSaveBeacon(); }catch(_){} });
+  window.addEventListener('beforeunload', (e)=>{ try{ if(window.__PAYROLL_DIRTY__) tryQuickSaveBeacon(); }catch(_){} });
+
+  // Unsaved modal helpers
+  function openUnsavedModal(target){
+    try{
+      const modal = document.getElementById('unsavedModal');
+      const input = document.getElementById('pendingNavTarget');
+      if(input) input.value = target || '';
+      if(modal){ modal.style.display = 'flex'; }
+    }catch(e){ console.error('openUnsavedModal', e); }
+  }
+  function closeUnsavedModal(){
+    try{ const modal = document.getElementById('unsavedModal'); if(modal){ modal.style.display = 'none'; } }catch(e){}
+  }
+  function confirmSaveAndExit(){
+    const target = document.getElementById('pendingNavTarget')?.value || 'home';
+    closeUnsavedModal();
+    saveAndExit(target);
+  }
+  function leaveWithoutSave(){
+    const target = document.getElementById('pendingNavTarget')?.value || 'home';
+    if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__();
+    closeUnsavedModal();
+    if(target){ location.href = target; }
+  }
+
+  // Keyboard shortcuts
+  window.addEventListener('keydown', (e)=>{
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='s'){
+      e.preventDefault();
+      document.querySelector('form.card')?.requestSubmit();
+    }
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase()==='n'){
+      e.preventDefault();
+      addRow();
+    }
+  });
+
+  // Always use split view only
+  setViewMode('split');
+  // Prime initial auto-calculation once UI is ready (non-blocking)
+  try{ setTimeout(()=>{ computeAll(); }, 0); }catch(_){ }
+</script>
+
+<!-- Row Detail Drawer -->
+<div id="rowDrawer" class="drawer" style="display:none">
+  <div class="drawer-panel">
+    <div class="drawer-head">
+      <strong>행 자세히 편집</strong>
+      <div style="flex:1"></div>
+      <button type="button" class="btn ghost" onclick="closeRowDrawer()">닫기</button>
+    </div>
+    <div id="rowDrawerBody" class="drawer-body form"></div>
+    <div class="drawer-foot">
+      <button type="button" onclick="closeRowDrawer()">취소</button>
+      <button type="button" class="primary" onclick="applyRowDrawer()">적용</button>
+    </div>
+  </div>
+  <div class="drawer-backdrop" onclick="closeRowDrawer()"></div>
+  <style>
+    .drawer{ position:fixed; inset:0; z-index:60; }
+    .drawer-panel{ position:absolute; top:0; right:0; width:720px; max-width:96vw; height:100%; background:#fff; border-left:1px solid var(--border); box-shadow:var(--shadow); display:flex; flex-direction:column }
+    .drawer-backdrop{ position:absolute; inset:0; background:rgba(2,6,23,.35); backdrop-filter:blur(2px) }
+    .drawer-head, .drawer-foot{ display:flex; align-items:center; gap:8px; padding:12px; border-bottom:1px solid var(--border) }
+    .drawer-foot{ border-top:1px solid var(--border); border-bottom:none; margin-top:auto; justify-content:flex-end }
+    .drawer-body{ padding:14px; overflow:auto; display:grid; grid-template-columns:1fr 1fr; gap:12px }
+    @media (max-width: 720px){ .drawer-body{ grid-template-columns:1fr; } }
+    .drawer-body label{ font-weight:600 }
+  </style>
+</div>
+
+<!-- Paste Modal -->
+<div id="pasteModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:50; align-items:center; justify-content:center;">
+  <div class="card" style="max-width:720px; width:90%;">
+    <h2>엑셀 올리기 (필수 컬럼)</h2>
+    <p class="muted">엑셀에서 사원코드, 사원명, 월급여, 기본급, 식대, 시간외수당, 연장근로수당, 현장수당, 직급수당, 각종상환공제, 비고 순서로 범위를 복사해 아래에 붙여넣으세요. 없는 컬럼은 건너뜁니다.</p>
+    <textarea id="pasteBox" style="width:100%; height:180px; margin:8px 0; padding:10px; border:1px solid var(--border); border-radius:10px;"></textarea>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" onclick="closePasteModal()">취소</button>
+      <button type="button" class="primary" onclick="handlePaste()">올리기</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unsaved changes modal -->
+<div id="unsavedModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:60; align-items:center; justify-content:center;">
+  <div class="card" style="max-width:520px; width:90%;">
+    <h2>저장되지 않은 변경사항</h2>
+    <p class="muted">현재 입력한 내용이 저장되지 않았습니다. 저장하고 나가시겠습니까?</p>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" onclick="closeUnsavedModal()">취소</button>
+      <button type="button" class="btn ghost" onclick="leaveWithoutSave()">그냥 나가기</button>
+      <button type="button" class="primary" onclick="confirmSaveAndExit()">저장하고 나가기</button>
+    </div>
+  </div>
+  
+  <!-- Navigation target placeholder -->
+  <input type="hidden" id="pendingNavTarget" value="">
+</div>
+
+<!-- Group Config Modal -->
+<div id="groupModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:50; align-items:center; justify-content:center;">
+  <div class="card group-card">
+    <h2>항목 구성</h2>
+    <p class="muted">숫자 항목을 '급여' 또는 '공제'로 분류하세요. '제외'는 합계에서 빠집니다. 항목명은 여기서 수정 가능합니다.</p>
+    <div style="display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap;">
+      <input id="groupSearch" type="search" placeholder="항목명 검색" style="max-width:260px">
+      <label style="display:flex; align-items:center; gap:6px;"><input id="groupShowHidden" type="checkbox"> 숨김(제외) 포함</label>
+      <div style="flex:1"></div>
+      <div style="display:flex; gap:8px; align-items:center;">
+        <input id="newFieldName" type="text" placeholder="새 항목명" style="width:200px">
+        <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="earn" checked> 급여</label>
+        <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="deduct"> 공제</label>
+        <button type="button" class="btn primary" onclick="addExtraField()">추가</button>
+      </div>
+    </div>
+    <div class="modal-scroll">
+      <table class="table group-table">
+        <thead>
+          <tr>
+            <th>항목명</th>
+            <th class="col-type">급여</th>
+            <th class="col-type">공제</th>
+            <th class="col-type">제외</th>
+            <th style="width:84px"></th>
+          </tr>
+        </thead>
+        <tbody id="groupConfigBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeGroupModal()">취소</button>
+      <button type="button" class="primary" onclick="saveGroupConfig()">저장</button>
+    </div>
+  </div>
+</div>
+
+<!-- Calc Config Modal (Insurance base selection) -->
+<div id="calcConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:60; align-items:center; justify-content:center;">
+  <div class="card group-card calc-card" style="max-width:980px; width:96%;">
+    <h2>공제 계산방법</h2>
+    <p class="muted">국민연금은 사원별 ‘기준보수월액’으로 계산됩니다. 건강보험/고용보험에 포함할 급여항목을 선택하세요.</p>
+    <div style="display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap;">
+      <input id="calcSearch" type="search" placeholder="항목명 검색" style="max-width:260px">
+      <div style="flex:1"></div>
+      <button type="button" class="btn" id="btnNhAll">건강보험 전체선택</button>
+      <button type="button" class="btn ghost" id="btnNhNone">건강보험 해제</button>
+      <span style="width:1px; height:22px; background:#E2E8F0;"></span>
+      <button type="button" class="btn" id="btnEiAll">고용보험 전체선택</button>
+      <button type="button" class="btn ghost" id="btnEiNone">고용보험 해제</button>
+    </div>
+    <div class="modal-scroll" style="max-height: calc(100vh - 220px); overflow:auto;">
+      <table class="group-table calc-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th class="col-name">항목명</th>
+            <th class="col-type">건강보험 포함</th>
+            <th class="col-type">고용보험 포함</th>
+            <th class="col-type" title="사원별 기준보수월액 사용">국민연금(기준보수월액)</th>
+          </tr>
+        </thead>
+        <tbody id="calcConfigBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeCalcConfig()">취소</button>
+      <button type="button" class="primary" onclick="saveCalcConfig()">저장</button>
+    </div>
+  </div>
+  <style>
+    .calc-card h2{ font-size:18px; }
+    .calc-table thead th{ position:sticky; top:0; background:#F8FAFC; z-index:1; }
+    .calc-table td, .calc-table th{ padding:10px; }
+    .calc-table tbody tr:nth-child(odd){ background:#FAFAFA; }
+    .calc-table .col-name{ text-align:left; }
+    .calc-table .col-type{ width:160px; text-align:center; white-space:nowrap; }
+    .calc-table input[type=checkbox]{ width:18px; height:18px; }
+    .group-card .muted{ color:#64748B; font-size:12px; }
+  </style>
+</div>
+
+<!-- Exempt Config Modal (비과세 설정) -->
+<div id="exemptConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:60; align-items:center; justify-content:center;">
+  <div class="card group-card" style="max-width:780px; width:94%;">
+    <h2>비과세 설정</h2>
+    <p class="muted">급여항목별 비과세 적용 여부와 한도(원) 금액을 설정하세요. 기본값은 식대·자가운전보조금 각 200,000원입니다.</p>
+    <div class="modal-scroll">
+      <table class="group-table" style="width:100%;">
+        <thead>
+          <tr>
+            <th class="col-name">항목명</th>
+            <th class="col-type">비과세</th>
+            <th class="col-type">한도(원)</th>
+          </tr>
+        </thead>
+        <tbody id="exemptConfigBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions">
+      <button type="button" onclick="closeExemptConfig()">취소</button>
+      <button type="button" class="primary" onclick="saveExemptConfig()">저장</button>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce() }}">
+  function openGroupModal(){ buildGroupConfig(); document.getElementById('groupModal').style.display='flex'; }
+  function closeGroupModal(){ document.getElementById('groupModal').style.display='none'; }
+  document.addEventListener('input', (e)=>{
+    if(e.target && (e.target.id==='groupSearch' || e.target.id==='groupShowHidden')){
+      buildGroupConfig();
+    }
+  });
+  function buildGroupConfig(){
+    const body = document.getElementById('groupConfigBody'); body.innerHTML='';
+    const map = loadGroupMap(); const alias = loadAliasMap();
+    const exclude = new Set(EXCLUDED_META_FIELDS);
+    const q = (document.getElementById('groupSearch')?.value||'').trim().toLowerCase();
+    const showHidden = !!document.getElementById('groupShowHidden')?.checked;
+    const rows = [];
+    // Merge base numeric columns + extra fields (without reload)
+    const items = [];
+    TABLE_META.cols.forEach(([f,l,t])=> items.push([f,l,t,false]));
+    (EXTRA_FIELDS || []).forEach(e=>{
+      const name = e.name || e.field || e.key; const label = e.label || name; const typ = e.typ || 'number';
+      if(!items.some(it=> it[0]===name)) items.push([name,label,typ,true]);
+    });
+    const seen = new Set();
+    items.forEach(([field,label,typ,isExtra])=>{
+      if(typ!=='number') return; if(exclude.has(label)) return; if(/감면/.test(label)) return; // exclude 감면
+      const g = map[field] || defaultGroupFor(label) || 'none';
+      const disp = alias[field] && String(alias[field]).trim() ? alias[field] : label;
+      const key = normalizeLabel(disp || label);
+      if(seen.has(key)) return; seen.add(key);
+      if(q && !(label.toLowerCase().includes(q) || String(disp).toLowerCase().includes(q))) return;
+      if(!showHidden && g==='none') return; // 숨김은 기본 비표시
+      const tr = document.createElement('tr');
+      const tdName = document.createElement('td');
+      const nameWrap = document.createElement('div'); nameWrap.className='name-wrap'; nameWrap.style.display='flex'; nameWrap.style.alignItems='center'; nameWrap.style.gap='8px';
+      const nameInput = document.createElement('input'); nameInput.type='text'; nameInput.className='name-input'; nameInput.value = disp; nameInput.placeholder = ''; nameInput.style.width='100%'; nameInput.dataset.field = field; nameWrap.appendChild(nameInput);
+      tdName.appendChild(nameWrap); tr.appendChild(tdName);
+      ['earn','deduct','none'].forEach(val=>{
+        const td = document.createElement('td'); td.className='radio-cell';
+        const lab = document.createElement('label'); lab.className='radio-wrap'; lab.title = (val==='earn'?'급여':(val==='deduct'?'공제':'제외'));
+        const r = document.createElement('input'); r.type='radio'; r.name=`g_${field}`; r.value=val; if(g===val) r.checked=true;
+        lab.appendChild(r); td.appendChild(lab); tr.appendChild(td);
+      });
+      // 삭제 버튼: none으로 설정하고 별도 표시
+      const tdDel = document.createElement('td');
+      const delBtn = document.createElement('button'); delBtn.type='button'; delBtn.className='btn danger btn-trash'; delBtn.title= isExtra ? '영구 삭제' : '제외(숨김)'; delBtn.innerText='🗑 삭제';
+      delBtn.onclick = async ()=>{
+        try{
+          if(isExtra){
+            if(!confirm('이 항목을 영구 삭제할까요? (데이터 컬럼에서 제거)')) return;
+            const res = await fetch(`/api/portal/${SLUG}/fields/delete`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ name: field }) });
+            let j = {}; try{ j = await res.json(); }catch(_){ }
+            if(!res.ok || (j && j.ok===false)){
+              alert((j && j.error) || '삭제 실패'); return;
+            }
+            // 이전 방식: 페이지 갱신(모달 닫힘)
+            location.reload();
+          }else{
+            const none = tr.querySelector(`input[name=\"g_${field}\"][value=\"none\"]`); if(none){ none.checked=true; } nameInput.value='';
+          }
+        }catch(e){ alert('삭제 실패: '+e); }
+      };
+      tdDel.appendChild(delBtn); tr.appendChild(tdDel);
+      rows.push(tr);
+    });
+    rows.forEach(tr=> body.appendChild(tr));
+  }
+  function saveGroupConfig(){
+    const map = {}; const alias = loadAliasMap();
+    TABLE_META.cols.forEach(([field,label,typ])=>{
+      if(typ!=='number') return; const el = document.querySelector(`input[name="g_${field}"]:checked`); if(el) map[field] = el.value;
+      const nameInput = document.querySelector(`#groupConfigBody input[type="text"][data-field="${field}"]`);
+      if(nameInput){ const v = String(nameInput.value||'').trim(); if(v && v!==label){ alias[field] = v; } else { delete alias[field]; } }
+    });
+    saveGroupMap(map); saveAliasMap(alias);
+    // 서버에도 저장 (엑셀 다운로드 반영)
+    try{
+      fetch(`/api/portal/${SLUG}/fields/group-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ map, alias }) });
+    }catch(e){}
+    closeGroupModal();
+    // refresh current selection
+    const active = document.querySelector('#empList tr.active');
+    const idx = active ? parseInt(active.dataset.idx,10) : 0; selectEmp(idx, active);
+  }
+  let __ADD_FIELD_BUSY = false;
+  async function addExtraField(){
+    if(__ADD_FIELD_BUSY) return;
+    const inp = document.getElementById('newFieldName');
+    const label = (inp?.value || '').trim();
+    if(!label){ return; }
+    __ADD_FIELD_BUSY = true;
+    const addBtn = document.querySelector('#groupModal .btn.primary[onclick*="addExtraField"]');
+    if(addBtn) addBtn.disabled = true;
+    const grp = (document.querySelector('input[name="newFieldGroup"]:checked')?.value) || 'earn';
+    try{
+      const res = await fetch(`/api/portal/${SLUG}/fields/add`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ label, typ:'number' }) });
+      const j = await res.json();
+      if(!res.ok || !j.ok){ alert(j.error || '추가 실패'); return; }
+      // 이전 방식: 그룹/별칭 저장 후 새로고침(모달 닫힘)
+      const gm = loadGroupMap(); gm[j.field.name] = grp; saveGroupMap(gm);
+      const am = loadAliasMap(); am[j.field.name] = label; saveAliasMap(am);
+      location.reload();
+    }catch(e){ alert('추가 실패: '+ e); }
+    finally{ __ADD_FIELD_BUSY = false; if(addBtn) addBtn.disabled = false; }
+  }
+
+  // Enter 키로 추가 시 중복 방지: 기본 제출 막고 addExtraField 한 번만 호출
+  (function(){
+    const nf = document.getElementById('newFieldName');
+    if(nf){
+      nf.addEventListener('keydown', (e)=>{
+        if(e.key === 'Enter'){
+          e.preventDefault();
+          addExtraField();
+        }
+      });
+    }
+  })();
+
+  // ---------------- 계산방법(보험별 포함 항목) 설정 ----------------
+  function openCalcConfig(){ if(window.PayrollUI && PayrollUI.openCalcConfig){ return PayrollUI.openCalcConfig(); } buildCalcConfig(); document.getElementById('calcConfigModal').style.display='flex'; }
+  function closeCalcConfig(){ if(window.PayrollUI && PayrollUI.closeCalcConfig){ return PayrollUI.closeCalcConfig(); } document.getElementById('calcConfigModal').style.display='none'; }
+  function buildCalcConfig(){ if(window.PayrollUI && PayrollUI.buildCalcConfig){ return PayrollUI.buildCalcConfig(); }
+    const body = document.getElementById('calcConfigBody'); if(!body) return; body.innerHTML='';
+    const { earnings } = classify();
+    const inc = loadInsIncludeMap();
+    const q = (document.getElementById('calcSearch')?.value||'').trim().toLowerCase();
+    (earnings||[]).forEach(([field,label,typ])=>{
+      const name = String(label||'');
+      if(q && !name.toLowerCase().includes(q)) return;
+      const tr = document.createElement('tr');
+      const nhChecked = (inc.nhis && Object.keys(inc.nhis).length>0) ? !!inc.nhis[field] : (label==='기본급' || field==='기본급');
+      const eiChecked = (inc.ei && Object.keys(inc.ei).length>0) ? !!inc.ei[field] : (label==='기본급' || field==='기본급');
+      tr.innerHTML = `
+        <td class="col-name">${label}</td>
+        <td class="radio-cell"><label class="radio-wrap"><input class="as-radio" type="checkbox" data-ins="nhis" data-field="${field}" ${nhChecked?'checked':''}></label></td>
+        <td class="radio-cell"><label class="radio-wrap"><input class="as-radio" type="checkbox" data-ins="ei" data-field="${field}" ${eiChecked?'checked':''}></label></td>
+        <td class="col-type muted" title="사원별 '기준보수월액'으로 계산됩니다.">필드값 사용</td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+  // Calc modal controls: 즉시 저장/반영
+  (function(){ if(window.PayrollUI && PayrollUI.wireCalcConfigListeners){ PayrollUI.wireCalcConfigListeners(); } })();
+  function applyCalcConfigImmediate(){
+    const inc = { nps:{}, nhis:{}, ei:{} };
+    document.querySelectorAll('#calcConfigBody input[type="checkbox"]').forEach(cb=>{
+      const ins = cb.dataset.ins; const f = cb.dataset.field; if(cb.checked){ inc[ins][f] = true; }
+    });
+    saveInsIncludeMap(inc);
+    // Persist to server as well (best-effort)
+    try{ fetch(`/api/portal/${SLUG}/fields/calc-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ include: { nhis: inc.nhis, ei: inc.ei } }) }); }catch(_){ }
+    try{ computeAll(); }catch(_){ }
+  }
+  // Calc modal controls
+  (function(){
+    document.addEventListener('input', (e)=>{
+      if(e.target && e.target.id==='calcSearch'){ buildCalcConfig(); }
+    });
+    document.addEventListener('click', (e)=>{
+      const id = (e.target && e.target.id) || '';
+      if(id==='btnNhAll' || id==='btnNhNone' || id==='btnEiAll' || id==='btnEiNone'){
+        const which = id.includes('Nh') ? 'nhis' : 'ei';
+        const val = id.endsWith('All');
+        document.querySelectorAll(`#calcConfigBody input[type="checkbox"][data-ins="${which}"]`).forEach(cb=>{ cb.checked = val; });
+      }
+    });
+  })();
+  function saveCalcConfig(){ if(window.PayrollUI && PayrollUI.saveCalcConfig){ return PayrollUI.saveCalcConfig(); } }
+
+  // ---------------- 비과세 설정 ----------------
+  function openExemptConfig(){ if(window.PayrollUI && PayrollUI.openExemptConfig){ return PayrollUI.openExemptConfig(); } buildExemptConfig(); document.getElementById('exemptConfigModal').style.display='flex'; }
+  function closeExemptConfig(){ if(window.PayrollUI && PayrollUI.closeExemptConfig){ return PayrollUI.closeExemptConfig(); } document.getElementById('exemptConfigModal').style.display='none'; }
+  function buildExemptConfig(){ if(window.PayrollUI && PayrollUI.buildExemptConfig){ return PayrollUI.buildExemptConfig(); } }
+  function saveExemptConfig(){ if(window.PayrollUI && PayrollUI.saveExemptConfig){ return PayrollUI.saveExemptConfig(); } }
+  // Exempt modal: 즉시 저장/반영
+  (function(){
+    document.addEventListener('change', (e)=>{
+      const t = e.target;
+      if(!(t instanceof HTMLElement)) return;
+      if(t.matches && (t.matches('#exemptConfigBody input[data-ex="1"]') || t.matches('#exemptConfigBody input[data-limit="1"]'))){
+        try{ applyExemptImmediate(); }catch(_){ }
+      }
+    });
+    document.addEventListener('blur', (e)=>{
+      const t = e.target;
+      if(!(t instanceof HTMLElement)) return;
+      if(t.matches && t.matches('#exemptConfigBody input[data-limit="1"]')){
+        t.value = formatNumeric(t.value||'');
+        try{ applyExemptImmediate(); }catch(_){ }
+      }
+    }, true);
+  })();
+  function applyExemptImmediate(){
+    const ov = {};
+    document.querySelectorAll('#exemptConfigBody tr').forEach(tr=>{
+      const ch = tr.querySelector('input[data-ex="1"]');
+      const lim = tr.querySelector('input[data-limit="1"]');
+      if(!ch || !lim) return; const field = ch.dataset.field;
+      const enabled = !!ch.checked;
+      const limit = Math.max(0, Number(sanitizeNumeric(lim.value)||0));
+      if(enabled && limit>0){ ov[field] = { enabled:true, limit }; }
+      else { ov[field] = { enabled:false, limit:0 }; }
+    });
+    saveExemptOverrides(ov);
+    try{ fetch(`/api/portal/${SLUG}/fields/exempt-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ exempt: ov }) }); }catch(_){ }
+    try{ computeAll(); }catch(_){ }
+  }
+</script>
+{% endblock %}

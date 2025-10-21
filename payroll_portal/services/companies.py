@@ -1,0 +1,52 @@
+from __future__ import annotations
+
+import secrets
+from typing import Optional
+
+from sqlalchemy.orm import Session
+from werkzeug.security import check_password_hash, generate_password_hash
+
+from payroll_shared.models import Company
+from payroll_shared.settings import get_settings
+
+from ..dao import companies as companies_dao
+
+
+def verify_admin_password(password: str) -> bool:
+    expected = get_settings().admin_password
+    return secrets.compare_digest(password.strip(), expected)
+
+
+def validate_company_access(session: Session, company: Company, access_code: str) -> bool:
+    return check_password_hash(company.access_hash, access_code.strip())
+
+
+def create_company(session: Session, name: str, slug: str) -> tuple[Company, str]:
+    slug = slug.strip().lower()
+    company = Company(name=name.strip(), slug=slug, access_hash="")
+    session.add(company)
+    session.flush()
+    code = rotate_company_access(session, company)
+    return company, code
+
+
+def rotate_company_access(session: Session, company: Company) -> str:
+    code = secrets.token_hex(4)
+    company.access_hash = generate_password_hash(code)
+    session.commit()
+    return code
+
+
+def ensure_token_key(session: Session, company: Company) -> None:
+    if company.token_key and company.token_key.strip():
+        return
+    company.token_key = secrets.token_hex(16)
+    session.commit()
+
+
+def find_company_by_slug(session: Session, slug: str) -> Optional[Company]:
+    return companies_dao.get_by_slug(session, slug)
+
+
+def find_company_by_id(session: Session, company_id: int) -> Optional[Company]:
+    return companies_dao.get_by_id(session, company_id)

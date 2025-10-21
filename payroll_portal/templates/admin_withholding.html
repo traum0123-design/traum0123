@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="kicker">ADMIN</div>
+<h1>근로소득 간이세액표 관리</h1>
+
+<div class="card" style="margin:12px 0;">
+  <h2>현황</h2>
+  {% if years %}
+    <ul>
+      {% for y, cnt, min_w, max_w in years %}
+        <li>{{ y }}년: {{ cnt }}건 ({{ min_w }} ~ {{ max_w }})</li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="muted">저장된 간이세액표가 없습니다.</p>
+  {% endif %}
+</div>
+
+<div class="card" style="margin:12px 0;">
+  <h2>엑셀 업로드</h2>
+  <form method="post" action="{{ url_for('admin.withholding_import') }}" enctype="multipart/form-data" class="form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>연도 <input type="number" name="year" min="2000" max="2100" value="2025" required></label>
+    <label>파일 (국세청 간이세액표 XLSX) <input type="file" name="file" accept=".xlsx,.xls" required></label>
+    <div style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="submit" class="primary">업로드</button>
+    </div>
+  </form>
+</div>
+
+<div class="card" style="margin:12px 0;">
+  <h2>샘플 조회</h2>
+  <div class="form" style="display:flex; gap:8px; flex-wrap:wrap; align-items:center;">
+    <label>연도 <input type="number" id="sYear" value="2025"></label>
+    <label>부양가족수 <input type="number" id="sDep" value="1" min="0" max="20"></label>
+    <label>월 급여액 <input type="number" id="sWage" value="1000000" step="1000"></label>
+    <button type="button" class="btn" onclick="runWithholdingSample()">조회</button>
+  </div>
+  <div id="sampleOut" class="muted" style="margin-top:8px;"></div>
+</div>
+
+<script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='admin_withholding.js') }}"></script>
+{% endblock %}

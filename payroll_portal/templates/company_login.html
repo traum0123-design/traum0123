@@ -1,0 +1,15 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="center">
+  <div class="kicker">PORTAL</div>
+  <h1>{{ company.name }} 포털 로그인</h1>
+  <form method="post" action="{{ url_for('company_login_post', slug=company.slug) }}" class="card form">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <label>접속코드
+      <input type="password" name="access_code" placeholder="관리자가 전달한 접속코드" required>
+    </label>
+    <button type="submit" class="primary">로그인</button>
+    <p class="hint">접속코드를 분실하신 경우, 담당자에게 재발급을 요청하세요.</p>
+  </form>
+</div>
+{% endblock %}

@@ -1,0 +1,2 @@
+# 이 파일은 하위 호환용입니다. 실제 의존성은 루트 requirements.txt에서 관리합니다.
+-r ../requirements.txt

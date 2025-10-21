@@ -1,0 +1,43 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>{{ company.name }}</h1>
+
+<div class="card">
+  <div class="grid two">
+    <div><strong>회사명</strong><div>{{ company.name }}</div></div>
+    <div><strong>슬러그</strong><div>{{ company.slug }}</div></div>
+    <div><strong>포털 로그인 URL</strong>
+      <div><code>/portal/{{ company.slug }}/login</code></div>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <h2>회사 포털 바로가기 (관리자)</h2>
+  <p>
+    <a class="btn primary" href="{{ url_for('admin.company_impersonate', company_id=company.id) }}">포털 홈 열기</a>
+  </p>
+  <form method="get" class="form inline" data-local="1" action="{{ url_for('admin.company_impersonate', company_id=company.id) }}">
+    <label>연도 <input type="number" name="year" min="2000" max="2100" placeholder="예: 2025"></label>
+    <label>월 <input type="number" name="month" min="1" max="12" placeholder="예: 10"></label>
+    <button type="submit">해당 월 입력 페이지 열기</button>
+  </form>
+</div>
+
+{% if new_code %}
+<div class="card warn">
+  <strong>신규 접속코드</strong>
+  <p>이 코드는 이번 1회만 표시됩니다. 고객사에 안전하게 전달하세요.</p>
+  <div class="codebox">{{ new_code }}</div>
+{% endif %}
+
+<form method="post" data-local="1" action="{{ url_for('admin.company_reset_code', company_id=company.id) }}">
+  <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+  <button type="submit" class="danger">접속코드 재발급</button>
+</form>
+
+<p>
+  <a class="btn" href="{{ url_for('admin.index') }}">목록으로</a>
+</p>
+
+{% endblock %}

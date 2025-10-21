@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{{ title or '급여 포털' }}</title>
+  <meta name="csrf-token" content="{{ csrf_token() }}">
+  <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}">
+</head>
+<body data-api-base="{{ (API_BASE_URL or '') }}">
+  <header class="topbar">
+    <div class="container flex between">
+      <div class="brand">급여 포털</div>
+      <nav>
+        {% if session.get('is_admin') %}
+          <a href="{{ url_for('admin.index') }}">관리자</a>
+          <a href="{{ url_for('admin.logout') }}">로그아웃</a>
+        {% elif session.get('company_slug') %}
+          <a href="{{ url_for('portal.home', slug=session.get('company_slug')) }}">회사 포털</a>
+          <a href="{{ url_for('portal.logout', slug=session.get('company_slug')) }}">로그아웃</a>
+        {% else %}
+          <a href="{{ url_for('admin.login') }}">관리자 로그인</a>
+        {% endif %}
+      </nav>
+    </div>
+  </header>
+
+  <main class="container">
+    {% with messages = get_flashed_messages(with_categories=true) %}
+      {% if messages %}
+        <div class="flash-area">
+          {% for category, message in messages %}
+            <div class="flash {{ category }}">{{ message }}</div>
+          {% endfor %}
+        </div>
+      {% endif %}
+    {% endwith %}
+
+    {% block content %}{% endblock %}
+  </main>
+
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/utils.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/state.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/dom.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/calc.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/ui.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='app.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='runtime.js') }}"></script>
+  <script nonce="{{ csp_nonce() }}">
+    (function(){
+      try{ window.__CSRF__ = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); }catch(e){ }
+      try{
+        const body = document.body || document.getElementsByTagName('body')[0];
+        const apiBase = ((body && body.dataset ? body.dataset.apiBase : '') || '').trim();
+        window.API_BASE = apiBase;
+      }catch(_){ window.API_BASE = ''; }
+      try{ window.API_TOKEN = {{ (API_TOKEN or '') | tojson }}; }catch(e){ }
+      try{ window.ADMIN_TOKEN = {{ (ADMIN_TOKEN or '') | tojson }}; }catch(e){ }
+    })();
+  </script>
+  <script nonce="{{ csp_nonce() }}">
+    (function(){
+      const base = (window.API_BASE||'').trim();
+      if(!base) return;
+      const norm = (p)=> base.replace(/\/$/,'') + p;
+      document.addEventListener('DOMContentLoaded', function(){
+        document.querySelectorAll('form').forEach(function(f){
+          const a = (f.getAttribute('action')||'');
+          if(f.dataset && f.dataset.local === '1') return;
+          if(!a || (!a.startsWith('/admin/') && !a.startsWith('/portal/'))) return;
+          f.setAttribute('action', norm(a));
+        });
+      });
+    })();
+  </script>
+</body>
+</html>
