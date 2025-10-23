@@ -5,9 +5,9 @@
   <h1>{{ company_name }} · 월 선택</h1>
 
   <div class="card" style="margin-bottom:14px; display:flex; align-items:center; gap:10px; justify-content:center;">
-    <button class="btn" onclick="changeYear(-1)">◀</button>
+    <button class="btn" data-action="changeYearPrev">◀</button>
     <strong style="font-size:20px; min-width:120px; text-align:center">{{ year }}년</strong>
-    <button class="btn" onclick="changeYear(1)">▶</button>
+    <button class="btn" data-action="changeYearNext">▶</button>
   </div>
 
   <div class="card" style="padding:16px;">

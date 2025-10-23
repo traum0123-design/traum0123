@@ -25,6 +25,7 @@
         fetch('/client-log', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
+          credentials: 'same-origin',
           body: JSON.stringify(payload)
         });
       }catch(e){}
@@ -75,4 +76,3 @@
     attachFlash(el);
     return el;
   };
-})();

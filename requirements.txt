@@ -7,3 +7,5 @@ jinja2
 openpyxl
 itsdangerous
 redis
+alembic
+Werkzeug

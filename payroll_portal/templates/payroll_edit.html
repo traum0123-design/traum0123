@@ -15,7 +15,7 @@
       <a class="btn" href="{{ url_for('portal.home', slug=slug) }}">월 변경</a>
       <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
       
-    <button type="button" class="btn" onclick="openPasteModal()" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
+        <button type="button" class="btn" data-action="openPasteModal" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
   </div>
   <div class="toolbar-actions">
     {% if not is_closed %}
@@ -72,8 +72,8 @@
         <div style="flex:1"></div>
         <input type="search" id="splitSearch" placeholder="사원명/코드 검색" style="max-width:220px">
         {% if not is_closed %}
-        <button type="button" class="btn primary" style="margin-left:8px" onclick="prefillFromPrev()">전월 급여 복사</button>
-        <button type="button" class="btn" onclick="addRowGlobal()">사원 추가</button>
+        <button type="button" class="btn primary" style="margin-left:8px" data-action="prefillFromPrev">전월 급여 복사</button>
+        <button type="button" class="btn" data-action="addRowGlobal">사원 추가</button>
         {% endif %}
       </div>
       <div class="panel-body">
@@ -107,7 +107,7 @@
 
     <!-- Middle: earnings -->
     <div class="panel">
-      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" onclick="openGroupModal()">항목 구성</button><button type="button" class="btn ghost" onclick="toggleBasicInfo()">기본정보</button><span id="selName" class="muted"></span></div>
+      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
       <div class="panel-body">
         <div id="basicInfo" class="basic-info"></div>
         <table id="earnTable"></table>
@@ -119,7 +119,7 @@
 
     <!-- Right: deductions + summary -->
     <div class="panel">
-      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" onclick="openCalcConfig()">계산방법</button><button type="button" class="btn" onclick="openExemptConfig()">비과세</button></div>
+      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openCalcConfig">계산방법</button><button type="button" class="btn" data-action="openExemptConfig">비과세</button></div>
       <div class="panel-body">
         <table id="dedTable"></table>
         <div class="summary">
@@ -162,7 +162,7 @@
     </thead>
     <tbody>
       {% for row in rows %}
-      <tr>
+      <tr class="js-emp-row" data-idx="{{ loop.index0 }}">
         <td class="rownum"></td>
         {% set row_index = loop.index0 %}
         {% for field, label, typ in columns %}
@@ -188,11 +188,11 @@
           </td>
         {% endfor %}
         <td>
-          <button type="button" onclick="rowCopy(this)">복사</button>
-          <button type="button" onclick="rowFillMonth(this)">월채움</button>
-          <button type="button" onclick="rowCompute(this)">계산</button>
-          <button type="button" onclick="rowDetail(this)">자세히</button>
-          <button type="button" class="danger" onclick="removeRow(this)">삭제</button>
+          <button type="button" data-action="rowCopy">복사</button>
+          <button type="button" data-action="rowFillMonth">월채움</button>
+          <button type="button" data-action="rowCompute">계산</button>
+          <button type="button" data-action="rowDetail">자세히</button>
+          <button type="button" class="danger" data-action="removeRow">삭제</button>
         </td>
       </tr>
       {% endfor %}
@@ -351,6 +351,8 @@
     // Re-index names
     const trs = tbody.querySelectorAll('tr');
     trs.forEach((tr, idx)=>{
+      tr.dataset.idx = idx;
+      tr.classList.add('js-emp-row');
       tr.querySelectorAll('input').forEach(inp=>{
         inp.name = inp.name.replace(/rows\[[0-9]+\]/, `rows[${idx}]`);
       });
@@ -383,6 +385,8 @@
     // reindex
     const trs = tbody.querySelectorAll('tr');
     trs.forEach((row, idx)=>{
+      row.dataset.idx = idx;
+      row.classList.add('js-emp-row');
       row.querySelectorAll('input').forEach(inp=>{
         inp.name = inp.name.replace(/rows\[[0-9]+\]/, `rows[${idx}]`);
       });
@@ -401,8 +405,8 @@
   const MONTH = {{ month }};
   const SLUG = {{ slug | tojson }};
   try{ window.YEAR = YEAR; window.MONTH = MONTH; window.SLUG = SLUG; }catch(_){ }
-const PORTAL_HOME_URL = {{ url_for('portal.home', slug=slug) | tojson }};
-const SAVE_URL = {{ url_for('portal.save_payroll', slug=slug, year=year, month=month) | tojson }};
+const PORTAL_HOME_URL = {{ portal_home_url | tojson }};
+const SAVE_URL = {{ save_url | tojson }};
 const STORAGE_NS = '__' + (SLUG || 'default') + '__';
 function nsKey(name){ return STORAGE_NS + name; }
   const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
@@ -1254,39 +1258,56 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     if(sEl && sEl.dataset && sEl.dataset.comp==='1') return;
     const q = (sEl?.value||'').trim().toLowerCase();
     const fields = availableEditFields();
-    const rows = [];
+    const fragment = document.createDocumentFragment();
     document.querySelectorAll('#payroll-table tbody tr').forEach((tr, idx)=>{
       const get = (name)=> tr.querySelector(`[name$='[${name}]']`);
       const code = get('사원코드')?.value || '';
       const name = get('사원명')?.value || '';
       if(q && !(String(code).toLowerCase().includes(q) || String(name).toLowerCase().includes(q))) return;
-      let cells = `<td>${idx+1}</td>`;
-      fields.forEach(([field,typ])=>{
+      const rowEl = document.createElement('tr');
+      rowEl.dataset.idx = idx;
+      rowEl.classList.add('js-emp-row');
+      const noTd = document.createElement('td');
+      noTd.textContent = idx + 1;
+      rowEl.appendChild(noTd);
+      fields.forEach(([field, typ])=>{
         const base = get(field);
         const val = base ? base.value : '';
-        const type = typ==='number'? 'text' : typ==='date'? 'date' : 'text';
-        const attrs = type==='number' ? ' step="1" inputmode="numeric"' : '';
-        const style = field==='사원명' ? ' style="min-width:80px"' : (field==='주민등록번호' ? ' style="min-width:180px"' : (field==='사원코드' ? ' style="min-width:140px"' : ''));
-        const extra = field==='주민등록번호' ? ' placeholder="000000-0000000" inputmode="numeric"' : '';
-        const disabledAttr = ((typeof IS_CLOSED!=='undefined' && IS_CLOSED) || !base || (!IS_ADMIN && field==='사원코드')) ? ' disabled' : '';
-        cells += `<td><input class="list-input" type="${type}" data-field="${field}" value="${val||''}" oninput="if(event.isComposing) return; gridInputChanged(this)" oncompositionstart="this.dataset.comp='1'" oncompositionend="this.dataset.comp='' ; gridInputChanged(this)" ${attrs}${style}${extra}${disabledAttr}></td>`;
+        const inputType = typ === 'date' ? 'date' : 'text';
+        const td = document.createElement('td');
+        const input = document.createElement('input');
+        input.className = 'list-input';
+        input.type = inputType;
+        input.dataset.field = field;
+        input.value = val || '';
+        input.style.width = '100%';
+        if(field === '사원명'){ input.style.minWidth = '80px'; }
+        if(field === '사원코드'){ input.style.minWidth = '140px'; }
+        if(field === '주민등록번호'){
+          input.style.minWidth = '180px';
+          input.placeholder = '000000-0000000';
+          input.setAttribute('inputmode', 'numeric');
+        }
+        if(typ === 'number'){
+          input.setAttribute('inputmode', 'numeric');
+          input.setAttribute('step', '1');
+          try{ attachNumericHandlers(input, field); }catch(_){}
+        }
+        if(field === '주민등록번호'){
+          try{ attachSsnHandlers(input); }catch(_){}
+        }
+        const readOnly = ((typeof IS_CLOSED !== 'undefined' && IS_CLOSED) || !base || (!IS_ADMIN && field === '사원코드'));
+        if(readOnly){ input.disabled = true; }
+        input.addEventListener('compositionstart', ()=>{ input.dataset.comp = '1'; });
+        input.addEventListener('compositionend', ()=>{ input.dataset.comp = ''; gridInputChanged(input); });
+        input.addEventListener('input', (e)=>{ if(e.isComposing || input.dataset.comp === '1') return; gridInputChanged(input); });
+        td.appendChild(input);
+        rowEl.appendChild(td);
       });
-      rows.push(`<tr data-idx="${idx}" onclick="rowSelect(event, ${idx}, this)">${cells}</tr>`);
+      fragment.appendChild(rowEl);
     });
-    tbody.innerHTML = rows.join('');
-    tbody.querySelectorAll('input.list-input').forEach(inp=>{ 
-      inp.style.width='100%'; 
-      attachNumericHandlers(inp, inp.dataset.field);
-      if(inp.dataset.field === '주민등록번호'){
-        try{ attachSsnHandlers(inp); }catch(e){}
-      }
-    });
-    // IME(한글) 입력 중간 상태를 안전하게 처리하여 값 동기화가 끊기지 않도록 보강
-    tbody.querySelectorAll('input.list-input').forEach(inp=>{
-      inp.addEventListener('compositionstart', ()=>{ inp.dataset.comp = '1'; });
-      inp.addEventListener('compositionend', ()=>{ inp.dataset.comp = ''; gridInputChanged(inp); });
-      inp.addEventListener('input', (e)=>{ if(e.isComposing || inp.dataset.comp==='1') return; gridInputChanged(inp); });
-    });
+    tbody.innerHTML = '';
+    tbody.appendChild(fragment);
     const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
     if(active){ active.classList.add('active'); }
   }
@@ -1559,8 +1580,9 @@ function gridInputChanged(el){
     // Clear flag when saving the form
     const form = document.getElementById('payrollForm');
     if(form){
-      form.addEventListener('submit', (e)=>{
-        // SSN validation summary (non-blocking unless user cancels)
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        let cancelled = false;
         try{
           const ssnInputs = document.querySelectorAll("#payroll-table input[data-field='주민등록번호']");
           let invalidCount = 0;
@@ -1572,10 +1594,55 @@ function gridInputChanged(el){
           });
           if(invalidCount>0){
             const ok = window.confirm(`주민등록번호 형식이 올바르지 않은 항목이 ${invalidCount}건 있습니다.\n그래도 저장하시겠습니까?`);
-            if(!ok){ e.preventDefault(); e.stopPropagation(); return; }
+            if(!ok){ cancelled = true; }
           }
         }catch(_){}
-        clearDirty();
+        if(cancelled){ return; }
+        const submitBtn = form.querySelector('button[type=\"submit\"]');
+        const originalLabel = submitBtn ? submitBtn.textContent : '';
+        if(submitBtn){
+          submitBtn.disabled = true;
+          submitBtn.textContent = '저장 중...';
+        }
+        try{
+          const fd = new FormData(form);
+          const nextTarget = fd.get('next') || '';
+          const usp = new URLSearchParams();
+          fd.forEach((value, key)=>{
+            usp.append(key, typeof value === 'string' ? value : String(value));
+          });
+          const response = await fetch(SAVE_URL, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+            credentials: 'same-origin',
+            body: usp.toString(),
+          });
+          let payload = null;
+          try{ payload = await response.json(); }catch(_){}
+          if(!response.ok || !payload || payload.ok === false){
+            const msg = (payload && payload.error) ? payload.error : `저장 실패 (HTTP ${response.status})`;
+            if(window.PayrollFlash){ PayrollFlash('error', msg); }
+            else{ alert(msg); }
+            return;
+          }
+          if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__();
+          const nextField = form.querySelector('#nextAfterSave');
+          if(nextField) nextField.value = '';
+          if(String(nextTarget).trim() === 'home'){
+            window.location.href = PORTAL_HOME_URL;
+            return;
+          }
+          if(window.PayrollFlash){ PayrollFlash('success', '저장되었습니다.'); }
+        }catch(err){
+          const msg = err && err.message ? err.message : '저장 중 오류가 발생했습니다.';
+          if(window.PayrollFlash){ PayrollFlash('error', msg); }
+          else{ alert(msg); }
+        }finally{
+          if(submitBtn){
+            submitBtn.disabled = false;
+            submitBtn.textContent = originalLabel;
+          }
+        }
       });
     }
 
@@ -1602,6 +1669,40 @@ function gridInputChanged(el){
     window.__PAYROLL_MARK_DIRTY__ = markDirty;
     window.__PAYROLL_CLEAR_DIRTY__ = clearDirty;
   })();
+
+  document.addEventListener('submit', async (event)=>{
+    const actionForm = event.target.closest('form.js-portal-action');
+    if(!actionForm) return;
+    event.preventDefault();
+    const submitBtn = actionForm.querySelector('button[type="submit"]');
+    const originalText = submitBtn ? submitBtn.textContent : '';
+    if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = '처리 중...'; }
+    try{
+      const fd = new FormData(actionForm);
+      const usp = new URLSearchParams();
+      fd.forEach((value, key)=> usp.append(key, typeof value === 'string' ? value : String(value)));
+      const res = await fetch(actionForm.action, {
+        method: actionForm.method || 'post',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        credentials: 'same-origin',
+        body: usp.toString(),
+      });
+      let payload = null;
+      try{ payload = await res.json(); }catch(_){ }
+      if(!res.ok || !payload || payload.ok === false){
+        const msg = (payload && payload.error) ? payload.error : `처리 실패 (HTTP ${res.status})`;
+        if(window.PayrollFlash){ PayrollFlash('error', msg); } else { alert(msg); }
+        return;
+      }
+      if(window.PayrollFlash){ PayrollFlash('success', '상태가 업데이트되었습니다.'); }
+      setTimeout(()=> window.location.reload(), 400);
+    }catch(err){
+      const msg = err && err.message ? err.message : '요청 처리 중 오류가 발생했습니다.';
+      if(window.PayrollFlash){ PayrollFlash('error', msg); } else { alert(msg); }
+    }finally{
+      if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = originalText; }
+    }
+  });
 
   // Save current form then navigate to target
   function saveAndExit(targetUrl){
@@ -1685,6 +1786,55 @@ function gridInputChanged(el){
   setViewMode('split');
   // Prime initial auto-calculation once UI is ready (non-blocking)
   try{ setTimeout(()=>{ computeAll(); }, 0); }catch(_){ }
+  const ACTION_HANDLERS = {
+    openPasteModal: ()=> openPasteModal(),
+    prefillFromPrev: ()=> prefillFromPrev(),
+    addRowGlobal: ()=> addRowGlobal(),
+    openGroupModal: ()=> openGroupModal(),
+    toggleBasicInfo: ()=> toggleBasicInfo(),
+    openCalcConfig: ()=> openCalcConfig(),
+    openExemptConfig: ()=> openExemptConfig(),
+    rowCopy: (el)=> rowCopy(el),
+    rowFillMonth: (el)=> rowFillMonth(el),
+    rowCompute: (el)=> rowCompute(el),
+    rowDetail: (el)=> rowDetail(el),
+    removeRow: (el)=> removeRow(el),
+    closeRowDrawer: ()=> closeRowDrawer(),
+    applyRowDrawer: ()=> applyRowDrawer(),
+    closePasteModal: ()=> closePasteModal(),
+    handlePaste: ()=> handlePaste(),
+    closeUnsavedModal: ()=> closeUnsavedModal(),
+    leaveWithoutSave: ()=> leaveWithoutSave(),
+    confirmSaveAndExit: ()=> confirmSaveAndExit(),
+    addExtraField: ()=> addExtraField(),
+    closeGroupModal: ()=> closeGroupModal(),
+    saveGroupConfig: ()=> saveGroupConfig(),
+    closeCalcConfig: ()=> closeCalcConfig(),
+    saveCalcConfig: ()=> saveCalcConfig(),
+    closeExemptConfig: ()=> closeExemptConfig(),
+    saveExemptConfig: ()=> saveExemptConfig(),
+  };
+
+  document.addEventListener('click', (event)=>{
+    const target = event.target.closest('[data-action]');
+    if(!target) return;
+    const action = target.dataset.action;
+    const handler = ACTION_HANDLERS[action];
+    if(!handler) return;
+    try{ handler(target, event); }catch(e){ console.error('[payroll action]', action, e); }
+    event.preventDefault();
+  });
+
+  document.addEventListener('click', (event)=>{
+    const row = event.target.closest('tr.js-emp-row');
+    if(!row) return;
+    const isInteractive = event.target.closest('button, [data-action], input, select, textarea, label');
+    if(isInteractive) return;
+    const idx = parseInt(row.getAttribute('data-idx')||'-1', 10);
+    if(idx >= 0){ rowSelect(event, idx, row); }
+  });
+
+
 </script>
 
 <!-- Row Detail Drawer -->
@@ -1693,15 +1843,15 @@ function gridInputChanged(el){
     <div class="drawer-head">
       <strong>행 자세히 편집</strong>
       <div style="flex:1"></div>
-      <button type="button" class="btn ghost" onclick="closeRowDrawer()">닫기</button>
+      <button type="button" class="btn ghost" data-action="closeRowDrawer">닫기</button>
     </div>
     <div id="rowDrawerBody" class="drawer-body form"></div>
     <div class="drawer-foot">
-      <button type="button" onclick="closeRowDrawer()">취소</button>
-      <button type="button" class="primary" onclick="applyRowDrawer()">적용</button>
+      <button type="button" data-action="closeRowDrawer">취소</button>
+      <button type="button" class="primary" data-action="applyRowDrawer">적용</button>
     </div>
   </div>
-  <div class="drawer-backdrop" onclick="closeRowDrawer()"></div>
+  <div class="drawer-backdrop" data-action="closeRowDrawer"></div>
   <style>
     .drawer{ position:fixed; inset:0; z-index:60; }
     .drawer-panel{ position:absolute; top:0; right:0; width:720px; max-width:96vw; height:100%; background:#fff; border-left:1px solid var(--border); box-shadow:var(--shadow); display:flex; flex-direction:column }
@@ -1721,8 +1871,8 @@ function gridInputChanged(el){
     <p class="muted">엑셀에서 사원코드, 사원명, 월급여, 기본급, 식대, 시간외수당, 연장근로수당, 현장수당, 직급수당, 각종상환공제, 비고 순서로 범위를 복사해 아래에 붙여넣으세요. 없는 컬럼은 건너뜁니다.</p>
     <textarea id="pasteBox" style="width:100%; height:180px; margin:8px 0; padding:10px; border:1px solid var(--border); border-radius:10px;"></textarea>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" onclick="closePasteModal()">취소</button>
-      <button type="button" class="primary" onclick="handlePaste()">올리기</button>
+      <button type="button" data-action="closePasteModal">취소</button>
+      <button type="button" class="primary" data-action="handlePaste">올리기</button>
     </div>
   </div>
 </div>
@@ -1733,9 +1883,9 @@ function gridInputChanged(el){
     <h2>저장되지 않은 변경사항</h2>
     <p class="muted">현재 입력한 내용이 저장되지 않았습니다. 저장하고 나가시겠습니까?</p>
     <div style="display:flex; gap:8px; justify-content:flex-end;">
-      <button type="button" onclick="closeUnsavedModal()">취소</button>
-      <button type="button" class="btn ghost" onclick="leaveWithoutSave()">그냥 나가기</button>
-      <button type="button" class="primary" onclick="confirmSaveAndExit()">저장하고 나가기</button>
+      <button type="button" data-action="closeUnsavedModal">취소</button>
+      <button type="button" class="btn ghost" data-action="leaveWithoutSave">그냥 나가기</button>
+      <button type="button" class="primary" data-action="confirmSaveAndExit">저장하고 나가기</button>
     </div>
   </div>
   
@@ -1756,7 +1906,7 @@ function gridInputChanged(el){
         <input id="newFieldName" type="text" placeholder="새 항목명" style="width:200px">
         <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="earn" checked> 급여</label>
         <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="deduct"> 공제</label>
-        <button type="button" class="btn primary" onclick="addExtraField()">추가</button>
+        <button type="button" class="btn primary" data-action="addExtraField">추가</button>
       </div>
     </div>
     <div class="modal-scroll">
@@ -1774,8 +1924,8 @@ function gridInputChanged(el){
       </table>
     </div>
     <div class="modal-actions">
-      <button type="button" onclick="closeGroupModal()">취소</button>
-      <button type="button" class="primary" onclick="saveGroupConfig()">저장</button>
+      <button type="button" data-action="closeGroupModal">취소</button>
+      <button type="button" class="primary" data-action="saveGroupConfig">저장</button>
     </div>
   </div>
 </div>
@@ -1808,8 +1958,8 @@ function gridInputChanged(el){
       </table>
     </div>
     <div class="modal-actions">
-      <button type="button" onclick="closeCalcConfig()">취소</button>
-      <button type="button" class="primary" onclick="saveCalcConfig()">저장</button>
+      <button type="button" data-action="closeCalcConfig">취소</button>
+      <button type="button" class="primary" data-action="saveCalcConfig">저장</button>
     </div>
   </div>
   <style>
@@ -1842,8 +1992,8 @@ function gridInputChanged(el){
       </table>
     </div>
     <div class="modal-actions">
-      <button type="button" onclick="closeExemptConfig()">취소</button>
-      <button type="button" class="primary" onclick="saveExemptConfig()">저장</button>
+      <button type="button" data-action="closeExemptConfig">취소</button>
+      <button type="button" class="primary" data-action="saveExemptConfig">저장</button>
     </div>
   </div>
 </div>
@@ -1893,7 +2043,7 @@ function gridInputChanged(el){
       // 삭제 버튼: none으로 설정하고 별도 표시
       const tdDel = document.createElement('td');
       const delBtn = document.createElement('button'); delBtn.type='button'; delBtn.className='btn danger btn-trash'; delBtn.title= isExtra ? '영구 삭제' : '제외(숨김)'; delBtn.innerText='🗑 삭제';
-      delBtn.onclick = async ()=>{
+      delBtn.addEventListener('click', async ()=>{
         try{
           if(isExtra){
             if(!confirm('이 항목을 영구 삭제할까요? (데이터 컬럼에서 제거)')) return;
@@ -1908,7 +2058,7 @@ function gridInputChanged(el){
             const none = tr.querySelector(`input[name=\"g_${field}\"][value=\"none\"]`); if(none){ none.checked=true; } nameInput.value='';
           }
         }catch(e){ alert('삭제 실패: '+e); }
-      };
+      });
       tdDel.appendChild(delBtn); tr.appendChild(tdDel);
       rows.push(tr);
     });
@@ -1938,7 +2088,7 @@ function gridInputChanged(el){
     const label = (inp?.value || '').trim();
     if(!label){ return; }
     __ADD_FIELD_BUSY = true;
-    const addBtn = document.querySelector('#groupModal .btn.primary[onclick*="addExtraField"]');
+    const addBtn = document.querySelector('#groupModal .btn.primary[data-action="addExtraField"]');
     if(addBtn) addBtn.disabled = true;
     const grp = (document.querySelector('input[name="newFieldGroup"]:checked')?.value) || 'earn';
     try{

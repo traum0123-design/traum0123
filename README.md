@@ -17,10 +17,30 @@
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
 pip install -r payroll_portal/requirements.txt
-export ADMIN_PASSWORD=changeme     # 필수
+
+# 관리자 비밀번호는 해시 문자열을 사용합니다. (아래 예시는 1234를 해시한 값)
+export ADMIN_PASSWORD=$(python - <<'PY'
+from werkzeug.security import generate_password_hash
+print(generate_password_hash('1234'))
+PY
+)
 export SECRET_KEY=dev-secret       # 선택 (추천)
+# 로컬 개발 DB는 프로젝트 내 SQLite를 사용(WAL 모드 자동 적용)
+# 레이트리밋 Redis 사용 시 (선택)
+# export ADMIN_RATE_LIMIT_REDIS_URL=redis://127.0.0.1:6379/0
 uvicorn app.main:app --reload
 ```
+
+> **Windows (CMD/PowerShell) 예시**
+>
+> ```cmd
+> .venv\Scripts\activate
+> set ADMIN_PASSWORD=scrypt:32768:8:1$dsWbqeMFENgkHHg5$4b77cbcd7abd34169fee626783c7c542e8efa3f67f3acb930d842bfa5bf191ef61d98508c650c08655885eac7945dc7df4970b704f7e9a9d50fa6a7284eafcef
+> set SECRET_KEY=dev-secret
+> uvicorn app.main:app --reload
+> ```
+>
+> PowerShell에서는 `set` 대신 `$env:ADMIN_PASSWORD='scrypt:32768:8:1$dsWbqeMFENgkHHg5$4b77cbcd7abd34169fee626783c7c542e8efa3f67f3acb930d842bfa5bf191ef61d98508c650c08655885eac7945dc7df4970b704f7e9a9d50fa6a7284eafcef'` 형식을 사용하세요.
 
 브라우저에서 <http://127.0.0.1:8000> 접속 후:
 1. `/admin/login`에서 관리자 로그인
@@ -34,8 +54,14 @@ uvicorn app.main:app --reload
 ```bash
 python3 -m compileall app core gateway payroll_api tests   # 최소 문법 검증
 # pytest 실행 시에는 openpyxl, sqlalchemy 등 의존성 설치 필요
-pytest tests/test_payroll_service.py tests/test_excel_export.py
+PYTHONPATH=. pytest tests/test_payroll_service.py tests/test_excel_export.py
 ```
+
+### 데이터베이스 구성
+
+- 개발 환경에서는 `DATABASE_URL`을 지정하지 않으면 저장소 내부 SQLite(`payroll_portal/app.db`)를 사용합니다.
+- SQLite 사용 시 WAL 모드/`foreign_keys=ON`이 자동 적용되지만, 운영 환경에서는 PostgreSQL 등 외부 DB를 `DATABASE_URL`로 지정하는 것을 권장합니다.
+- 레이트리밋은 기본적으로 Redis 연결이 설정되어 있으면 자동으로 Redis 백엔드를 사용합니다. 운영 환경에서는 `ADMIN_RATE_LIMIT_REDIS_URL`을 반드시 설정하세요.
 
 ## QA 체크리스트
 

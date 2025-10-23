@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import datetime as dt
 from io import BytesIO
+from xml.etree import ElementTree as ET
+from zipfile import ZipFile
 from typing import Iterable
 
 from openpyxl import Workbook
@@ -129,8 +131,12 @@ def build_salesmap_workbook(
     deduct_labels = [lbl for _, lbl in deduct_fields]
 
     row1 = left_fixed[:] + ([] if not earn_labels else ["수당"] + [""] * (len(earn_labels) - 1)) + ["지급액계"] \
-           + ([] if not deduct_labels else ["공제"] + [""] * (len(deduct_labels) - 1)) + ["공제액계", "차인지급액"]
+           + ([] if not deduct_labels else [""] * (len(deduct_labels) - 1) + ["공제"]) + ["공제액계", "차인지급액"]
     ws.append(row1)
+    for idx, value in enumerate(row1, start=1):
+        if value == "":
+            cell = ws.cell(row=1, column=idx)
+            cell._value = ""
     row2 = left_fixed[:] + earn_labels + ["지급액계"] + deduct_labels + ["공제액계", "차인지급액"]
     ws.append(row2)
 
@@ -141,16 +147,7 @@ def build_salesmap_workbook(
             letters = chr(65 + rem) + letters
         return letters
 
-    start_allow = len(left_fixed) + 1
-    end_allow = start_allow + max(len(earn_labels), 0) - 1
-    if end_allow >= start_allow:
-        end_allow_total = end_allow + 1
-        ws.merge_cells(f"{col_to_letter(start_allow)}1:{col_to_letter(end_allow_total)}1")
-    start_deduct = (len(left_fixed) + max(len(earn_labels), 0) + 1) + 1
-    end_deduct = start_deduct + max(len(deduct_labels), 0) - 1
-    if end_deduct >= start_deduct:
-        end_deduct_total = end_deduct + 1
-        ws.merge_cells(f"{col_to_letter(start_deduct)}1:{col_to_letter(end_deduct_total)}1")
+    # Leave multi-level headers unmerged so exported sheet retains explicit columns.
 
     max_col = len(row2)
     for r in (1, 2):
@@ -320,4 +317,27 @@ def build_salesmap_workbook(
     bio = BytesIO()
     wb.save(bio)
     bio.seek(0)
-    return bio
+    return _normalize_inline_blanks(bio)
+
+
+def _normalize_inline_blanks(blob: BytesIO) -> BytesIO:
+    """Ensure empty inline strings are serialized with explicit <t/> nodes."""
+    namespace = "{http://schemas.openxmlformats.org/spreadsheetml/2006/main}"
+    blob.seek(0)
+    with ZipFile(blob, "r") as zin:
+        out_io = BytesIO()
+        with ZipFile(out_io, "w") as zout:
+            for item in zin.infolist():
+                data = zin.read(item.filename)
+                if item.filename == "xl/worksheets/sheet1.xml":
+                    tree = ET.fromstring(data)
+                    for cell in tree.findall(f".//{namespace}c"):
+                        if cell.get("t") == "inlineStr" and len(cell) == 0:
+                            is_el = ET.Element(f"{namespace}is")
+                            t_el = ET.SubElement(is_el, f"{namespace}t")
+                            t_el.text = ""
+                            cell.append(is_el)
+                    data = ET.tostring(tree, encoding="utf-8", xml_declaration=False)
+                zout.writestr(item, data)
+    out_io.seek(0)
+    return out_io

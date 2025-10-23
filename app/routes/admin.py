@@ -14,7 +14,14 @@ from core.services import companies as company_service
 from core.services.auth import issue_admin_token, issue_company_token
 from payroll_api.database import get_db
 
-from .portal import ADMIN_COOKIE_NAME, PORTAL_COOKIE_NAME, COOKIE_SECURE, _base_context, _is_admin
+from .portal import (
+    ADMIN_COOKIE_NAME,
+    PORTAL_COOKIE_NAME,
+    COOKIE_SECURE,
+    _apply_template_security,
+    _base_context,
+    _is_admin,
+)
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -27,11 +34,12 @@ def login_page(request: Request):
     if _is_admin(request):
         return RedirectResponse(url="/admin/", status_code=303)
     context = _base_context(request)
-    return templates.TemplateResponse("admin_login.html", context)
+    response = templates.TemplateResponse("admin_login.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.post("/login", name="admin.login_post")
-def login_action(request: Request, password: str = Form(...)):
+def login_action(request: Request, password: str = Form(...), csrf_token: Optional[str] = Form(None)):
     if not company_service.verify_admin_password(password):
         return RedirectResponse(url="/admin/login?error=1", status_code=303)
     token = issue_admin_token()
@@ -79,11 +87,12 @@ def admin_index(request: Request, db: Session = Depends(get_db)):
     ]
     context = _base_context(request)
     context.update({"companies": companies, "wh_counts": wh_counts})
-    return templates.TemplateResponse("admin_index.html", context)
+    response = templates.TemplateResponse("admin_index.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.post("/company/new", name="admin.company_new")
-def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db)):
+def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     name = (name or "").strip()
@@ -110,11 +119,12 @@ def company_detail(request: Request, company_id: int, db: Session = Depends(get_
         "new_code": code,
         "portal_login_url": f"/portal/{company.slug}/login",
     })
-    return templates.TemplateResponse("admin_company_detail.html", context)
+    response = templates.TemplateResponse("admin_company_detail.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.post("/company/{company_id}/reset-code", name="admin.company_reset_code")
-def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db)):
+def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)

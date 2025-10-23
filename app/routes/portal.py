@@ -3,6 +3,7 @@ from __future__ import annotations
 import io
 import json
 import os
+import secrets
 from pathlib import Path
 from typing import Optional
 
@@ -37,6 +38,64 @@ templates = Jinja2Templates(directory=str(TEMPLATE_DIR))
 PORTAL_COOKIE_NAME = "portal_token"
 ADMIN_COOKIE_NAME = "admin_token"
 COOKIE_SECURE = os.environ.get("COOKIE_SECURE", "").strip().lower() in {"1", "true", "yes", "on"}
+
+CSRF_COOKIE_NAME = "portal_csrf"
+CSRF_HEADER_NAME = "X-CSRF-Token"
+CSRF_MAX_AGE = 60 * 60  # 1 hour
+
+
+def _ensure_csrf_token(request: Request) -> str:
+    token = getattr(request.state, "csrf_token", None)
+    if not token:
+        token = secrets.token_urlsafe(32)
+        request.state.csrf_token = token
+    return token
+
+
+def _ensure_csp_nonce(request: Request) -> str:
+    nonce = getattr(request.state, "csp_nonce", None)
+    if not nonce:
+        nonce = secrets.token_urlsafe(16)
+        request.state.csp_nonce = nonce
+    return nonce
+
+
+def _apply_template_security(request: Request, response):
+    csrf_token = _ensure_csrf_token(request)
+    nonce = _ensure_csp_nonce(request)
+    response.set_cookie(
+        key=CSRF_COOKIE_NAME,
+        value=csrf_token,
+        max_age=CSRF_MAX_AGE,
+        secure=COOKIE_SECURE,
+        samesite="Strict",
+        httponly=False,
+        path="/",
+    )
+    csp_value = response.headers.get("Content-Security-Policy")
+    policy = f"script-src 'self' 'nonce-{nonce}'; object-src 'none'; base-uri 'self'"
+    if csp_value:
+        response.headers["Content-Security-Policy"] = csp_value
+    else:
+        response.headers["Content-Security-Policy"] = policy
+    return response
+
+
+def _verify_csrf(request: Request, token: Optional[str] = None) -> None:
+    cookie_token = request.cookies.get(CSRF_COOKIE_NAME) or ""
+    header_token = request.headers.get(CSRF_HEADER_NAME) or ""
+    body_token = (token or "").strip()
+    if not cookie_token:
+        raise HTTPException(status_code=403, detail="missing csrf cookie")
+
+    def _matches(candidate: str) -> bool:
+        return bool(candidate) and secrets.compare_digest(candidate, cookie_token)
+
+    if _matches(body_token):
+        return
+    if _matches(header_token):
+        return
+    raise HTTPException(status_code=403, detail="invalid csrf token")
 
 
 def _get_portal_token(request: Request) -> Optional[str]:
@@ -81,8 +140,8 @@ def _base_context(request: Request, company: Optional[Company] = None) -> dict:
             "is_admin": _is_admin(request),
             "company_slug": company.slug if company else None,
         },
-        "csrf_token": lambda: "",
-        "csp_nonce": lambda: "",
+        "csrf_token": lambda: _ensure_csrf_token(request),
+        "csp_nonce": lambda: _ensure_csp_nonce(request),
         "get_flashed_messages": lambda **_: [],
         "url_for": _url_for,
     }
@@ -99,11 +158,12 @@ def login_page(request: Request, slug: str, db: Session = Depends(get_db), error
         "company": company,
         "error": message,
     })
-    return templates.TemplateResponse("company_login.html", context)
+    response = templates.TemplateResponse("company_login.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.post("/{slug}/login", name="portal.login_post")
-def login_action(request: Request, slug: str, db: Session = Depends(get_db), access_code: str = Form(...)):
+def login_action(request: Request, slug: str, db: Session = Depends(get_db), access_code: str = Form(...), csrf_token: Optional[str] = Form(None)):
     company = company_service.find_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
@@ -187,7 +247,8 @@ def portal_home(request: Request, slug: str, db: Session = Depends(get_db)):
             "company_name": company.name,
         }
     )
-    return templates.TemplateResponse("portal_home.html", context)
+    response = templates.TemplateResponse("portal_home.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.get("/{slug}/payroll/{year}/{month}", response_class=HTMLResponse, name="portal.edit_payroll")
@@ -206,6 +267,41 @@ def edit_payroll(request: Request, slug: str, year: int, month: int, db: Session
         )
         .first()
     )
+    rows = []
+    if record:
+        try:
+            rows = json.loads(record.rows_json or "[]")
+        except Exception:
+            rows = []
+    if not rows:
+        rows = [{}]
+    group_map, alias_map, exempt_map, include_map = load_field_prefs(db, company)
+    context = _base_context(request, company)
+    context.update(
+        {
+            "company_name": company.name,
+            "slug": slug,
+            "year": year,
+            "month": month,
+            "columns": cols,
+            "extra_fields": [{"name": ef.name, "label": ef.label, "typ": ef.typ} for ef in extras],
+            "rows": rows,
+            "group_map": group_map,
+            "alias_map": alias_map,
+            "exempt_map": exempt_map,
+            "include_map": include_map,
+            "numeric_fields": numeric_fields,
+            "date_fields": date_fields,
+            "bool_fields": bool_fields,
+            "is_closed": bool(record.is_closed) if record else False,
+            "insurance_config": insurance_settings(),
+            "portal_home_url": str(request.url_for("portal.home", slug=slug)),
+            "save_url": str(request.url_for("portal.save_payroll", slug=slug, year=year, month=month)),
+            "is_admin": _is_admin(request),
+        }
+    )
+    response = templates.TemplateResponse("payroll_edit.html", context)
+    return _apply_template_security(request, response)
 
 
 @router.post("/{slug}/payroll/{year}/{month}", name="portal.save_payroll")
@@ -247,6 +343,7 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
             is_closed=False,
         )
         db.add(record)
+        db.flush()
     else:
         record.rows_json = payload_json
 
@@ -256,7 +353,7 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
 
 
 @router.post("/{slug}/payroll/{year}/{month}/close", name="portal.close_payroll")
-def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db)):
+def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     company = _require_company(request, slug, db)
@@ -284,7 +381,7 @@ def close_payroll(request: Request, slug: str, year: int, month: int, db: Sessio
 
 
 @router.post("/{slug}/payroll/{year}/{month}/open", name="portal.reopen_payroll")
-def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db)):
+def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     company = _require_company(request, slug, db)
@@ -348,34 +445,3 @@ def export_payroll(slug: str, year: int, month: int, request: Request, db: Sessi
         "Content-Disposition": f"attachment; filename=\"{filename}\"",
     }
     return StreamingResponse(workbook, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
-    rows = []
-    if record:
-        try:
-            rows = json.loads(record.rows_json or "[]")
-        except Exception:
-            rows = []
-    if not rows:
-        rows = [{}]
-    group_map, alias_map, exempt_map, include_map = load_field_prefs(db, company)
-    context = _base_context(request, company)
-    context.update(
-        {
-            "company_name": company.name,
-            "slug": slug,
-            "year": year,
-            "month": month,
-            "columns": cols,
-            "extra_fields": [{"name": ef.name, "label": ef.label, "typ": ef.typ} for ef in extras],
-            "rows": rows,
-            "group_map": group_map,
-            "alias_map": alias_map,
-            "exempt_map": exempt_map,
-            "include_map": include_map,
-            "numeric_fields": numeric_fields,
-            "date_fields": date_fields,
-            "bool_fields": bool_fields,
-            "is_closed": bool(record.is_closed) if record else False,
-            "insurance_config": insurance_settings(),
-        }
-    )
-    return templates.TemplateResponse("payroll_edit.html", context)

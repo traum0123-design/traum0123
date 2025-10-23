@@ -166,8 +166,13 @@ def load_field_prefs(session: Session, company: Company):
         except Exception:
             limit_val = 0
         enabled = bool(getattr(pref, "exempt_enabled", False) and limit_val > 0)
-        # Always send back the entry even if disabled so that clients can honour explicit override
-        exempt_map[pref.field] = {"enabled": enabled, "limit": limit_val}
+        existing = exempt_map.get(pref.field)
+        if not enabled and limit_val <= 0 and existing:
+            # Preserve configured base exemptions unless an explicit override exists.
+            pass
+        else:
+            # Always send back the entry even if disabled so that clients can honour explicit override
+            exempt_map[pref.field] = {"enabled": enabled, "limit": limit_val}
         if getattr(pref, "ins_nhis", False):
             include_map["nhis"][pref.field] = True
         if getattr(pref, "ins_ei", False):
@@ -192,6 +197,18 @@ def compute_withholding_tax(
         .first()
     )
     return int(row.tax) if row else 0
+
+
+def compute_deductions(
+    session: Session,
+    company: Company,
+    row: dict,
+    year: int,
+):
+    """Wrapper to keep legacy import paths working for deduction calculations."""
+    from .calculation import compute_deductions as _compute_deductions
+
+    return _compute_deductions(session, company, row, year)
 
 
 def parse_rows(

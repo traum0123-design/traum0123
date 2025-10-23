@@ -15,5 +15,11 @@
       if(out){ out.textContent = `소득세: ${Number(j.tax||0).toLocaleString('ko-KR')}원, 지방소득세: ${Number(j.local_tax||0).toLocaleString('ko-KR')}원`; }
     }catch(e){ if(out) out.textContent = '오류: ' + e; }
   }
+  document.addEventListener('click', (event)=>{
+    const btn = event.target.closest('[data-action="runWithholdingSample"]');
+    if(!btn) return;
+    event.preventDefault();
+    runSample();
+  });
   global.runWithholdingSample = runSample;
 })(window);

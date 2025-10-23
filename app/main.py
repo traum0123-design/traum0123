@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from fastapi.responses import RedirectResponse
 
 from payroll_api.main import lifespan as api_lifespan, router as api_router
 
@@ -46,6 +47,10 @@ def create_app() -> FastAPI:
     static_dir = Path(__file__).resolve().parents[1] / "payroll_portal" / "static"
     if static_dir.exists():
         application.mount("/static", StaticFiles(directory=str(static_dir)), name="static")
+
+    @application.get("/", include_in_schema=False)
+    def root_redirect():
+        return RedirectResponse(url="/admin/login", status_code=307)
 
     return application
 

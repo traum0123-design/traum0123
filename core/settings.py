@@ -14,7 +14,7 @@ class PayrollSettings(BaseSettings):
     admin_password: str = Field(..., alias="ADMIN_PASSWORD")
     database_url: Optional[str] = Field(None, alias="DATABASE_URL")
     payroll_auto_apply_ddl: bool = Field(True, alias="PAYROLL_AUTO_APPLY_DDL")
-    admin_rate_limit_backend: str = Field("memory", alias="ADMIN_RATE_LIMIT_BACKEND")
+    admin_rate_limit_backend: str = Field("auto", alias="ADMIN_RATE_LIMIT_BACKEND")
     admin_rate_limit_redis_url: Optional[str] = Field(None, alias="ADMIN_RATE_LIMIT_REDIS_URL")
     enforce_alembic_migrations: bool = Field(False, alias="PAYROLL_ENFORCE_ALEMBIC")
 
@@ -56,8 +56,10 @@ class PayrollSettings(BaseSettings):
     @field_validator("admin_rate_limit_backend", mode="before")
     @classmethod
     def _normalize_backend(cls, value: str | None) -> str:
-        val = (value or "memory").strip().lower()
-        return val or "memory"
+        val = (value or "auto").strip().lower()
+        if val not in {"auto", "memory", "redis"}:
+            return "memory"
+        return val or "auto"
 
     @field_validator("enforce_alembic_migrations", mode="before")
     @classmethod

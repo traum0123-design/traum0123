@@ -1,11 +1,15 @@
 from __future__ import annotations
 
+import logging
 import os
 import threading
 import time
 from typing import Optional, Protocol
 
 from .settings import get_settings
+
+
+logger = logging.getLogger("payroll_core.rate_limit")
 
 
 class _Backend(Protocol):
@@ -84,6 +88,10 @@ _singleton_lock = threading.Lock()
 def _build_backend() -> _Backend:
     settings = get_settings()
     backend = settings.admin_rate_limit_backend
+    if backend == "auto":
+        has_redis = bool(settings.admin_rate_limit_redis_url or os.environ.get("REDIS_URL"))
+        backend = "redis" if has_redis else "memory"
+        logger.debug("Rate limit backend auto-detected: %s", backend)
     if backend == "redis":
         url = settings.admin_rate_limit_redis_url or os.environ.get("REDIS_URL")
         if not url:
@@ -92,7 +100,10 @@ def _build_backend() -> _Backend:
             return RedisBackend(url)
         except Exception as exc:
             raise RuntimeError(f"Redis 백엔드 초기화 실패: {exc}") from exc
-    return InMemoryBackend()
+    if backend == "memory":
+        logger.warning("Rate limit backend falling back to in-memory. 운영 환경에서는 Redis 사용을 권장합니다.")
+        return InMemoryBackend()
+    raise RuntimeError(f"알 수 없는 rate limit 백엔드: {backend}")
 
 
 def get_admin_rate_limiter() -> RateLimiter:

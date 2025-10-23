@@ -12,5 +12,12 @@
     const path = global.location.pathname.split('?')[0];
     global.location.href = `${path}?${params.toString()}`;
   }
+  document.addEventListener('click', (event)=>{
+    const prev = event.target.closest('[data-action="changeYearPrev"]');
+    const next = event.target.closest('[data-action="changeYearNext"]');
+    if(!prev && !next) return;
+    event.preventDefault();
+    if(prev) changeYear(-1); else changeYear(1);
+  });
   global.changeYear = changeYear;
 })(window);

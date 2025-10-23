@@ -13,8 +13,14 @@ from core.repositories import companies as companies_repo
 
 
 def verify_admin_password(password: str) -> bool:
-    expected = get_settings().admin_password
-    return secrets.compare_digest(password.strip(), expected)
+    candidate = (password or "").strip()
+    expected = (get_settings().admin_password or "").strip()
+    if not expected or not candidate:
+        return False
+    try:
+        return check_password_hash(expected, candidate)
+    except ValueError:
+        return secrets.compare_digest(candidate, expected)
 
 
 def validate_company_access(session: Session, company: Company, access_code: str) -> bool:

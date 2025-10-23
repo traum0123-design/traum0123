@@ -65,6 +65,17 @@ class WithholdingImportResponse(BaseModel):
     count: int
 
 
+class PayrollCalcRequest(BaseModel):
+    year: int
+    row: Dict[str, Any] = Field(default_factory=dict)
+
+
+class PayrollCalcResponse(BaseModel):
+    ok: bool = True
+    amounts: Dict[str, int] = Field(default_factory=dict)
+    metadata: Dict[str, Any] = Field(default_factory=dict)
+
+
 class WithholdingYearsResponse(BaseModel):
     ok: bool = True
     years: List[List[int]]
