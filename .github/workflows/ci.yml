@@ -57,6 +57,12 @@ jobs:
           pathlib.Path('payroll_portal').mkdir(exist_ok=True)
           PY
           alembic upgrade head
+      - name: Alembic downgrade/upgrade cycle (sanity)
+        env:
+          DATABASE_URL: sqlite:///./payroll_portal/app.db
+        run: |
+          alembic downgrade base
+          alembic upgrade head
       - name: Run tests
         env:
           PYTHONPATH: .

@@ -141,11 +141,12 @@ PYTHONPATH=. python scripts/dev_seed.py
 alembic upgrade head
 
 # 새 리비전 생성(모델 변경 후)
-alembic revision -m "<message>"
+alembic revision -m "<message>"        # 또는: python scripts/make_migration.py -m "<message>"
 ```
 
 환경 변수
 - `DATABASE_URL`이 지정되지 않으면 `sqlite:///./payroll_portal/app.db`로 동작합니다.
+  - 자동 비교 옵션 활성화(compare_type/server_default/batch). 모델 변경점이 있으면 autogenerate로 검출됩니다.
 
 ## Docker Compose(개발용)
 

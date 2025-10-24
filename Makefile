@@ -18,6 +18,9 @@ test:
 migrate:
 	DATABASE_URL=sqlite:///./payroll_portal/app.db alembic upgrade head
 
+makemigration:
+	python scripts/make_migration.py -m "update"
+
 docker-build:
 	docker build -t payroll-portal:dev .
 
@@ -27,4 +30,3 @@ docker-run:
 precommit:
 	pre-commit install
 	pre-commit run --all-files
-
