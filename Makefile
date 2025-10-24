@@ -36,6 +36,15 @@ docker-build:
 docker-run:
 	docker run --rm -p 8000:8000 --env-file .env payroll-portal:dev
 
+compose-up:
+	docker compose up --build -d
+
+compose-up-dev:
+	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+
+compose-down:
+	docker compose down -v
+
 precommit:
 	pre-commit install
 	pre-commit run --all-files

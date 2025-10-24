@@ -103,6 +103,9 @@ make lint          # ruff 린트
 make type          # mypy 타입체크
 make migrate       # SQLite로 Alembic 적용
 make test          # pytest 실행
+make compose-up    # compose 빌드+백그라운드 실행
+make compose-up-dev# dev 오버라이드(리로드/마운트)
+make compose-down  # compose 종료 및 볼륨 정리
 ```
 
 .env 템플릿: `.env.example` 참고
@@ -181,6 +184,7 @@ docker compose up --build
 # 앱: http://127.0.0.1:8000
 # DB 연결: postgresql+psycopg://postgres:postgres@db:5432/payroll
 # Redis: redis://redis:6379/0
+# 컨테이너 헬스체크: 앱은 /api/healthz 기준으로 자동 상태 확인
 ```
 
 메모

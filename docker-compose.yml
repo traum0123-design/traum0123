@@ -37,8 +37,12 @@ services:
       ADMIN_RATE_LIMIT_BACKEND: redis
       ADMIN_RATE_LIMIT_REDIS_URL: redis://redis:6379/0
       UVICORN_WORKERS: 2
+    healthcheck:
+      test: ["CMD", "python", "scripts/healthcheck.py"]
+      interval: 15s
+      timeout: 3s
+      retries: 10
 
 volumes:
   pgdata:
   redisdata:
-
