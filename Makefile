@@ -9,6 +9,9 @@ install-dev:
 lint:
 	ruff check .
 
+format:
+	ruff format .
+
 type:
 	PYTHONPATH=. mypy .
 

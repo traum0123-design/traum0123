@@ -3,7 +3,8 @@ from __future__ import annotations
 import logging
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Generator, Optional
+from collections.abc import Generator
+from typing import Optional
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url

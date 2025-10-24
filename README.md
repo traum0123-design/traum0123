@@ -100,6 +100,7 @@ Makefile 제공
 ```bash
 make install-dev   # 개발 의존성 설치
 make lint          # ruff 린트
+make format        # ruff 포맷(임포트 정리 포함)
 make type          # mypy 타입체크
 make migrate       # SQLite로 Alembic 적용
 make test          # pytest 실행
@@ -130,6 +131,14 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 환경 변수 팁
 - CORS: `API_CORS_ORIGINS`에 허용할 오리진을 콤마로 구분해 지정하세요.
 - 로깅: `UVICORN_LOG_LEVEL`로 앱 로그 레벨을 조정합니다(`debug`/`info`/...).
+
+### pre-commit 사용
+
+```bash
+pip install -r requirements-dev.txt
+pre-commit install
+pre-commit run --all-files
+```
 
 ### 샘플 데이터 시드
 
