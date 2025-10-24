@@ -4,7 +4,6 @@ import logging
 from contextlib import contextmanager
 from pathlib import Path
 from collections.abc import Generator
-from typing import Optional
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
@@ -15,9 +14,9 @@ from .models import Base
 from .settings import get_settings
 
 # Module-level singletons
-_engine: Optional[Engine] = None
-_SessionLocal: Optional[sessionmaker] = None
-_ScopedSession: Optional[scoped_session] = None
+_engine: Engine | None = None
+_SessionLocal: sessionmaker | None = None
+_ScopedSession: scoped_session | None = None
 
 
 logger = logging.getLogger("payroll_core.db")
@@ -99,7 +98,7 @@ def fastapi_session() -> Generator[Session, None, None]:
         session.close()
 
 
-def init_database(auto_apply_ddl: Optional[bool] = None, enforce_alembic: Optional[bool] = None) -> Engine:
+def init_database(auto_apply_ddl: bool | None = None, enforce_alembic: bool | None = None) -> Engine:
     """Ensure the database is ready and return the engine."""
     engine = get_engine()
     settings = get_settings()

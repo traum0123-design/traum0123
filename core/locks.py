@@ -4,14 +4,15 @@ import os
 import time
 import uuid
 from contextlib import contextmanager
-from typing import Iterator, Optional
+from collections.abc import Iterator
+from typing import Optional
 
 from redis import Redis  # type: ignore
 
 _DEFAULT_PREFIX = "payroll:lock:"
 
 
-def _redis_client() -> Optional[Redis]:
+def _redis_client() -> Redis | None:
     url = (
         os.environ.get("LOCK_REDIS_URL")
         or os.environ.get("REDIS_URL")

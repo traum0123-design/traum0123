@@ -1,10 +1,10 @@
 from __future__ import annotations
 
-from typing import Dict, List, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
-from .models import ExtraField, Company, FieldPref
+from .models import Company, ExtraField, FieldPref
 
 
 def _normalize_label_text(label: str) -> str:
@@ -28,13 +28,13 @@ def cleanup_duplicate_extra_fields(s: Session, company: Company) -> bool:
         bool: True if any rows were removed or preferences updated.
     """
     changed = False
-    rows: List[ExtraField] = (
+    rows: list[ExtraField] = (
         s.query(ExtraField)
         .filter(ExtraField.company_id == company.id)
         .order_by(ExtraField.label.asc(), ExtraField.id.asc())
         .all()
     )
-    by_label: Dict[str, List[ExtraField]] = {}
+    by_label: dict[str, list[ExtraField]] = {}
     for ef in rows:
         norm = _normalize_label_text(ef.label)
         by_label.setdefault(norm, []).append(ef)
@@ -63,14 +63,14 @@ def _merge_field_prefs(
 ) -> None:
     """Best-effort merge of FieldPref rows pointing at a duplicate field."""
 
-    def _get_pref(field_name: str) -> Optional[FieldPref]:
+    def _get_pref(field_name: str) -> FieldPref | None:
         return (
             s.query(FieldPref)
             .filter(FieldPref.company_id == company_id, FieldPref.field == field_name)
             .first()
         )
 
-    dup_prefs: List[FieldPref] = (
+    dup_prefs: list[FieldPref] = (
         s.query(FieldPref)
         .filter(FieldPref.company_id == company_id, FieldPref.field == duplicate.name)
         .all()
@@ -99,4 +99,3 @@ def _merge_field_prefs(
         if getattr(pref, "ins_ei", False) and not getattr(keep_pref, "ins_ei", False):
             keep_pref.ins_ei = True
         s.delete(pref)
-

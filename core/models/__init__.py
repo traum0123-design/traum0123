@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import datetime as dt
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
@@ -12,7 +12,7 @@ class Base(DeclarativeBase):
 
 
 def utc_now() -> dt.datetime:
-    return dt.datetime.now(dt.timezone.utc)
+    return dt.datetime.now(dt.UTC)
 
 
 class Company(Base):
@@ -24,7 +24,7 @@ class Company(Base):
     token_key: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
-    payrolls: Mapped[List["MonthlyPayroll"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    payrolls: Mapped[list[MonthlyPayroll]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class MonthlyPayroll(Base):
@@ -97,29 +97,29 @@ class MonthlyPayrollRow(Base):
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     payroll_id: Mapped[int] = mapped_column(ForeignKey("monthly_payrolls.id"), nullable=False, index=True)
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
-    employee_code: Mapped[Optional[str]] = mapped_column(String(80))
-    employee_name: Mapped[Optional[str]] = mapped_column(String(120))
-    employee_ssn: Mapped[Optional[str]] = mapped_column(String(32))
-    hire_date: Mapped[Optional[dt.date]] = mapped_column(Date)
-    leave_date: Mapped[Optional[dt.date]] = mapped_column(Date)
-    leave_start_date: Mapped[Optional[dt.date]] = mapped_column(Date)
-    leave_end_date: Mapped[Optional[dt.date]] = mapped_column(Date)
-    base_salary: Mapped[Optional[int]] = mapped_column(Integer)
-    meal_allowance: Mapped[Optional[int]] = mapped_column(Integer)
-    overtime_allowance: Mapped[Optional[int]] = mapped_column(Integer)
-    bonus: Mapped[Optional[int]] = mapped_column(Integer)
-    extra_allowance: Mapped[Optional[int]] = mapped_column(Integer)
-    total_earnings: Mapped[Optional[int]] = mapped_column(Integer)
-    national_pension: Mapped[Optional[int]] = mapped_column(Integer)
-    health_insurance: Mapped[Optional[int]] = mapped_column(Integer)
-    long_term_care: Mapped[Optional[int]] = mapped_column(Integer)
-    employment_insurance: Mapped[Optional[int]] = mapped_column(Integer)
-    income_tax: Mapped[Optional[int]] = mapped_column(Integer)
-    local_income_tax: Mapped[Optional[int]] = mapped_column(Integer)
-    employee_insurance_flag: Mapped[Optional[bool]] = mapped_column(Boolean)
-    other_deductions: Mapped[Optional[int]] = mapped_column(Integer)
-    total_deductions: Mapped[Optional[int]] = mapped_column(Integer)
-    net_pay: Mapped[Optional[int]] = mapped_column(Integer)
+    employee_code: Mapped[str | None] = mapped_column(String(80))
+    employee_name: Mapped[str | None] = mapped_column(String(120))
+    employee_ssn: Mapped[str | None] = mapped_column(String(32))
+    hire_date: Mapped[dt.date | None] = mapped_column(Date)
+    leave_date: Mapped[dt.date | None] = mapped_column(Date)
+    leave_start_date: Mapped[dt.date | None] = mapped_column(Date)
+    leave_end_date: Mapped[dt.date | None] = mapped_column(Date)
+    base_salary: Mapped[int | None] = mapped_column(Integer)
+    meal_allowance: Mapped[int | None] = mapped_column(Integer)
+    overtime_allowance: Mapped[int | None] = mapped_column(Integer)
+    bonus: Mapped[int | None] = mapped_column(Integer)
+    extra_allowance: Mapped[int | None] = mapped_column(Integer)
+    total_earnings: Mapped[int | None] = mapped_column(Integer)
+    national_pension: Mapped[int | None] = mapped_column(Integer)
+    health_insurance: Mapped[int | None] = mapped_column(Integer)
+    long_term_care: Mapped[int | None] = mapped_column(Integer)
+    employment_insurance: Mapped[int | None] = mapped_column(Integer)
+    income_tax: Mapped[int | None] = mapped_column(Integer)
+    local_income_tax: Mapped[int | None] = mapped_column(Integer)
+    employee_insurance_flag: Mapped[bool | None] = mapped_column(Boolean)
+    other_deductions: Mapped[int | None] = mapped_column(Integer)
+    total_deductions: Mapped[int | None] = mapped_column(Integer)
+    net_pay: Mapped[int | None] = mapped_column(Integer)
     year: Mapped[int] = mapped_column(Integer, nullable=False)
     month: Mapped[int] = mapped_column(Integer, nullable=False)
     is_closed: Mapped[bool] = mapped_column(Boolean, default=False)

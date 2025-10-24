@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from io import BytesIO
-from typing import Iterable
+from collections.abc import Iterable
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
 
