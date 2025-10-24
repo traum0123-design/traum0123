@@ -22,11 +22,12 @@ line-length = 120
 target-version = "py312"
 exclude = [
   ".venv",
+  ".venv_ci",
   ".git",
   "alembic/versions",  # migration scripts can be verbose
 ]
 
-# Keep linting pragmatic for now
+[tool.ruff.lint]
 select = ["E", "F"]
 ignore = [
   "E203",  # whitespace before ':' (formatter compat)
@@ -37,5 +38,6 @@ ignore = [
   "F405",  # may shadow 'import *' names
 ]
 
-[tool.ruff.per-file-ignores]
+[tool.ruff.lint.per-file-ignores]
 "tests/*" = ["F401", "F811"]
+"alembic/env.py" = ["E402"]

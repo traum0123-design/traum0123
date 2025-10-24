@@ -14,14 +14,19 @@ from sqlalchemy import text
 from .database import engine, get_db
 from core.models import Base, Company, MonthlyPayroll, WithholdingCell, ExtraField, FieldPref
 import os
+import secrets
+import logging
+from urllib.parse import quote
 from dotenv import load_dotenv
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi import Header
 from starlette.exceptions import HTTPException as StarletteHTTPException
+from werkzeug.security import generate_password_hash
 from core.fields import cleanup_duplicate_extra_fields
 from core.rate_limit import get_admin_rate_limiter
 from core.settings import get_settings
 from core.alembic_utils import ensure_up_to_date
+from core.services import companies as company_service
 from core.services.auth import (
     authenticate_admin,
     authenticate_company,
@@ -64,10 +69,6 @@ from .schemas import (
 
 ADMIN_COOKIE_NAME = "admin_token"
 PORTAL_COOKIE_NAME = "portal_token"
-import secrets
-from werkzeug.security import generate_password_hash
-from urllib.parse import quote
-import logging
 
 
 load_dotenv()  # .env 자동 로드(개발 편의)
@@ -164,7 +165,7 @@ def api_withholding(
     token: Optional[str] = None,
     portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
 ):
-    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
+    require_company(slug, db, authorization, x_api_token, token, portal_cookie)
     tax = compute_withholding_tax_service(db, year, dep, wage)
     return {
         "ok": True,
@@ -315,7 +316,7 @@ async def admin_withholding_import(
                 break
         if not header_row_idx:
             raise ValueError("의존가족수 헤더를 찾을 수 없습니다.")
-        data = []
+        data: list[dict[str, int]] = []
         for r in range(header_row_idx+1, ws.max_row+1):
             v = ws.cell(row=r, column=1).value
             if v is None:
@@ -339,7 +340,7 @@ async def admin_withholding_import(
         inserted = 0
         with db.begin():
             db.query(WithholdingCell).filter(WithholdingCell.year == year).delete(synchronize_session=False)
-            db.bulk_insert_mappings(WithholdingCell, data)
+            db.bulk_insert_mappings(WithholdingCell, data)  # type: ignore[arg-type]
             inserted = len(data)
         return {"ok": True, "year": year, "count": inserted}
     except Exception as e:
@@ -468,7 +469,8 @@ def admin_login_api(request: Request, password: str = Form(...)):
             max_attempts = int(os.environ.get("ADMIN_LOGIN_RL_MAX", "10") or 10)
             window_sec = int(os.environ.get("ADMIN_LOGIN_RL_WINDOW", "600") or 600)
         except Exception:
-            max_attempts = 10; window_sec = 600
+            max_attempts = 10
+            window_sec = 600
         limiter = get_admin_rate_limiter()
         key = f"fastapi:{ip}"
         try:
@@ -651,9 +653,9 @@ async def api_save_payroll(
 # Fields config (parity with Flask JSON APIs)
 # ------------------------------
 
-def _load_include_map(db: Session, company: Company) -> dict:
+def _load_include_map(db: Session, company: Company) -> dict[str, dict[str, bool]]:
     rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
-    inc = {"nhis": {}, "ei": {}}
+    inc: dict[str, dict[str, bool]] = {"nhis": {}, "ei": {}}
     for p in rows:
         if bool(getattr(p, "ins_nhis", False)):
             inc["nhis"][p.field] = True

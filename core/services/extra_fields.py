@@ -33,7 +33,7 @@ def add_extra_field(
     if not norm_label:
         raise ValueError("라벨이 필요합니다.")
 
-    with company_extra_field_lock(company.id, norm_label) as acquired:
+    with company_extra_field_lock(company.id, norm_label):
         # Even if we could not acquire the lock, we try optimistic path
         existing = extra_fields_repo.find_by_label(session, company.id, norm_label)
         if existing:

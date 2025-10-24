@@ -210,14 +210,14 @@ def portal_home(request: Request, slug: str, db: Session = Depends(get_db)):
     if not company:
         return RedirectResponse(url=f"/portal/{slug}/login", status_code=303)
     cur_y, cur_m = current_year_month()
-    year = request.query_params.get("year")
+    year_q = request.query_params.get("year")
     try:
-        year = int(year) if year else cur_y
+        year_int = int(year_q) if year_q else cur_y
     except Exception:
-        year = cur_y
+        year_int = cur_y
     records = (
         db.query(MonthlyPayroll)
-        .filter(MonthlyPayroll.company_id == company.id, MonthlyPayroll.year == year)
+        .filter(MonthlyPayroll.company_id == company.id, MonthlyPayroll.year == year_int)
         .all()
     )
     status = {}
@@ -235,14 +235,14 @@ def portal_home(request: Request, slug: str, db: Session = Depends(get_db)):
                 "month": mm,
                 "state": meta.get("state", "none"),
                 "updated_at": meta.get("updated_at", ""),
-                "is_current": (year == cur_y and mm == cur_m),
+                "is_current": (year_int == cur_y and mm == cur_m),
             }
         )
     context = _base_context(request, company)
     context.update(
         {
             "slug": slug,
-            "year": year,
+            "year": year_int,
             "months": months,
             "company_name": company.name,
         }
