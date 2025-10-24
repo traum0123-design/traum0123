@@ -107,6 +107,30 @@ make test          # pytest 실행
 
 .env 템플릿: `.env.example` 참고
 
+### 패키징/에디터블 설치
+
+PEP 621 기반 `pyproject.toml` 메타데이터가 포함되어 있어 에디터블 설치가 가능합니다.
+
+```bash
+pip install -e .
+python -c "import core, app, payroll_api; print('editable ok')"
+```
+
+### Docker Compose(dev) 라이브 리로드
+
+개발 편의용으로 코드 마운트 + 리로드를 제공하는 오버라이드 파일을 제공합니다.
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
+```
+
+### 샘플 데이터 시드
+
+```bash
+PYTHONPATH=. python scripts/dev_seed.py
+# 출력된 포털 로그인 URL/코드로 테스트
+```
+
 ## 마이그레이션(Alembic)
 
 개발 초기에는 자동 DDL 생성이 가능하지만(설정에 따라), 운영에서는 Alembic으로 스키마를 관리하세요.

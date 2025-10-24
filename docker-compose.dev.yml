@@ -1,0 +1,11 @@
+version: "3.9"
+
+services:
+  app:
+    command: uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
+    volumes:
+      - .:/app
+    environment:
+      UVICORN_WORKERS: 1
+      PAYROLL_AUTO_APPLY_DDL: 1
+
