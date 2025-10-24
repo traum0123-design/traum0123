@@ -92,3 +92,19 @@ docker run --rm -p 8000:8000 \
 - 컨테이너는 `PORT` 환경변수를 지원하며, 지정되지 않으면 8000 포트로 구동됩니다.
 - 운영 환경에서는 `.env`를 이미지에 포함하지 말고, 배포 플랫폼의 시크릿/환경변수 기능을 사용하세요.
 - 헬스체크 엔드포인트: `/api/healthz` (200 응답 기대)
+
+## 마이그레이션(Alembic)
+
+개발 초기에는 자동 DDL 생성이 가능하지만(설정에 따라), 운영에서는 Alembic으로 스키마를 관리하세요.
+
+기본 명령
+```bash
+# 최신으로 적용
+alembic upgrade head
+
+# 새 리비전 생성(모델 변경 후)
+alembic revision -m "<message>"
+```
+
+환경 변수
+- `DATABASE_URL`이 지정되지 않으면 `sqlite:///./payroll_portal/app.db`로 동작합니다.
