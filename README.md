@@ -1,5 +1,27 @@
 # Payroll Platform (FastAPI + Jinja)
 
+## TL;DR (개발자용)
+
+- 환경 준비
+  - 가상환경: `python -m venv .venv && source .venv/bin/activate`
+  - 의존성: `pip install -r requirements-dev.txt`
+  - 환경변수: `.env.example` 참고(최소 `ADMIN_PASSWORD`, `SECRET_KEY`)
+
+- 실행
+  - 로컬: `uvicorn app.main:app --reload`
+  - Compose(dev): `make compose-up-dev` (리로드/마운트)
+
+- 점검
+  - 헬스: `make health` (또는 `/healthz`)
+  - 린트/포맷/타입: `make lint && make format && make type`
+  - 테스트: `make test` (현재 10 tests pass)
+
+- 관리 CLI
+  - 도움말: `make manage`
+  - DB 마이그: `python scripts/manage.py migrate`
+  - 데모 시드: `python scripts/manage.py seed-demo`
+
+
 통합 급여 포털/관리자 애플리케이션입니다. FastAPI를 중심으로 포털(HTML)과 JSON API를 제공하며, 공통 도메인 로직은 `core/` 패키지에 위치합니다.
 
 ## 구성 개요
