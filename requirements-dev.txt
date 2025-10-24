@@ -1,0 +1,9 @@
+-r payroll_portal/requirements.txt
+
+# Test
+pytest
+
+# Lint / Type-check
+ruff
+mypy
+
