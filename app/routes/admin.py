@@ -39,7 +39,7 @@ def login_page(request: Request):
 
 
 @router.post("/login", name="admin.login_post")
-def login_action(request: Request, password: str = Form(...), csrf_token: Optional[str] = Form(None)):
+def login_action(request: Request, password: str = Form(...), csrf_token: str | None = Form(None)):
     if not company_service.verify_admin_password(password):
         return RedirectResponse(url="/admin/login?error=1", status_code=303)
     token = issue_admin_token()
@@ -92,7 +92,7 @@ def admin_index(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/company/new", name="admin.company_new")
-def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
+def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     name = (name or "").strip()
@@ -107,7 +107,7 @@ def company_new(request: Request, name: str = Form(...), slug: str = Form(...), 
 
 
 @router.get("/company/{company_id}", response_class=HTMLResponse, name="admin.company_detail")
-def company_detail(request: Request, company_id: int, db: Session = Depends(get_db), code: Optional[str] = None):
+def company_detail(request: Request, company_id: int, db: Session = Depends(get_db), code: str | None = None):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)
@@ -124,7 +124,7 @@ def company_detail(request: Request, company_id: int, db: Session = Depends(get_
 
 
 @router.post("/company/{company_id}/reset-code", name="admin.company_reset_code")
-def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
+def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)
@@ -135,7 +135,7 @@ def company_reset_code(request: Request, company_id: int, db: Session = Depends(
 
 
 @router.get("/company/{company_id}/impersonate", name="admin.company_impersonate")
-def company_impersonate(request: Request, company_id: int, db: Session = Depends(get_db), year: Optional[int] = None, month: Optional[int] = None):
+def company_impersonate(request: Request, company_id: int, db: Session = Depends(get_db), year: int | None = None, month: int | None = None):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)

@@ -81,7 +81,7 @@ def _apply_template_security(request: Request, response):
     return response
 
 
-def _verify_csrf(request: Request, token: Optional[str] = None) -> None:
+def _verify_csrf(request: Request, token: str | None = None) -> None:
     cookie_token = request.cookies.get(CSRF_COOKIE_NAME) or ""
     header_token = request.headers.get(CSRF_HEADER_NAME) or ""
     body_token = (token or "").strip()
@@ -98,14 +98,14 @@ def _verify_csrf(request: Request, token: Optional[str] = None) -> None:
     raise HTTPException(status_code=403, detail="invalid csrf token")
 
 
-def _get_portal_token(request: Request) -> Optional[str]:
+def _get_portal_token(request: Request) -> str | None:
     cookie_token = request.cookies.get(PORTAL_COOKIE_NAME)
     header_token = request.headers.get("X-API-Token")
     authorization = request.headers.get("Authorization")
     return extract_token(authorization, header_token, None, cookie_token)
 
 
-def _require_company(request: Request, slug: str, db: Session) -> Optional[Company]:
+def _require_company(request: Request, slug: str, db: Session) -> Company | None:
     token = _get_portal_token(request)
     if not token:
         return None
@@ -124,7 +124,7 @@ def _is_admin(request: Request) -> bool:
     return authenticate_admin(token)
 
 
-def _base_context(request: Request, company: Optional[Company] = None) -> dict:
+def _base_context(request: Request, company: Company | None = None) -> dict:
     def _url_for(name: str, **params):
         target = name
         if target == "static":
@@ -148,7 +148,7 @@ def _base_context(request: Request, company: Optional[Company] = None) -> dict:
 
 
 @router.get("/{slug}/login", response_class=HTMLResponse, name="portal.login")
-def login_page(request: Request, slug: str, db: Session = Depends(get_db), error: Optional[str] = None):
+def login_page(request: Request, slug: str, db: Session = Depends(get_db), error: str | None = None):
     company = company_service.find_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
@@ -163,7 +163,7 @@ def login_page(request: Request, slug: str, db: Session = Depends(get_db), error
 
 
 @router.post("/{slug}/login", name="portal.login_post")
-def login_action(request: Request, slug: str, db: Session = Depends(get_db), access_code: str = Form(...), csrf_token: Optional[str] = Form(None)):
+def login_action(request: Request, slug: str, db: Session = Depends(get_db), access_code: str = Form(...), csrf_token: str | None = Form(None)):
     company = company_service.find_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
@@ -353,7 +353,7 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
 
 
 @router.post("/{slug}/payroll/{year}/{month}/close", name="portal.close_payroll")
-def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
+def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     company = _require_company(request, slug, db)
@@ -381,7 +381,7 @@ def close_payroll(request: Request, slug: str, year: int, month: int, db: Sessio
 
 
 @router.post("/{slug}/payroll/{year}/{month}/open", name="portal.reopen_payroll")
-def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: Optional[str] = Form(None)):
+def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     company = _require_company(request, slug, db)

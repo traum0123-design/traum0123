@@ -5,7 +5,7 @@ import hmac
 import json
 import time
 from hashlib import sha256
-from typing import Any, Dict, Optional
+from typing import Any, Optional
 
 
 def _b64url(data: bytes) -> str:
@@ -35,7 +35,7 @@ def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: boo
     return f"{_b64url(body)}.{_b64url(sig)}"
 
 
-def verify_company_token(secret: str, token: str) -> Optional[Dict[str, Any]]:
+def verify_company_token(secret: str, token: str) -> dict[str, Any] | None:
     try:
         part_body, part_sig = token.split('.')
     except ValueError:
@@ -74,7 +74,7 @@ def make_admin_token(secret: str, *, ttl_seconds: int = 2 * 60 * 60) -> str:
     return f"{_b64url(body)}.{_b64url(sig)}"
 
 
-def verify_admin_token(secret: str, token: str) -> Optional[Dict[str, Any]]:
+def verify_admin_token(secret: str, token: str) -> dict[str, Any] | None:
     try:
         part_body, part_sig = token.split('.')
     except ValueError:
