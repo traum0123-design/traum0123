@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from core.db import init_database, session_scope
-from core.models import Company
+from core.models import Company, MonthlyPayroll, MonthlyPayrollRow, ExtraField, FieldPref, WithholdingCell
 from core.services import companies as company_service
 from core.services.auth import issue_admin_token, issue_company_token
 
@@ -77,6 +77,48 @@ def cmd_admin_token(_: argparse.Namespace) -> int:
     return 0
 
 
+def cmd_health(args: argparse.Namespace) -> int:
+    import json
+    import urllib.request
+
+    host = args.host or "127.0.0.1"
+    port = args.port or 8000
+    url = f"http://{host}:{port}/api/healthz"
+    try:
+        with urllib.request.urlopen(url, timeout=3) as resp:  # nosec - local
+            ok = resp.getcode() == 200 and json.loads(resp.read().decode("utf-8")).get("ok")
+            print("HEALTH:", "OK" if ok else "FAIL", url)
+            return 0 if ok else 1
+    except Exception as e:
+        print("HEALTH: ERROR", e)
+        return 1
+
+
+def cmd_stats(_: argparse.Namespace) -> int:
+    init_database()
+    with session_scope() as session:
+        stats = {
+            "companies": session.query(Company).count(),
+            "monthly_payrolls": session.query(MonthlyPayroll).count(),
+            "monthly_payroll_rows": session.query(MonthlyPayrollRow).count(),
+            "extra_fields": session.query(ExtraField).count(),
+            "field_prefs": session.query(FieldPref).count(),
+            "withholding_cells": session.query(WithholdingCell).count(),
+        }
+        for k, v in stats.items():
+            print(f"{k}: {v}")
+    return 0
+
+
+def cmd_list_companies(_: argparse.Namespace) -> int:
+    init_database()
+    with session_scope() as session:
+        rows = session.query(Company).order_by(Company.created_at.desc()).all()
+        for c in rows:
+            print(f"{c.id}\t{c.slug}\t{c.name}\t{c.created_at}")
+    return 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(prog="manage", description="Dev management CLI")
     sub = parser.add_subparsers(dest="cmd", required=True)
@@ -103,10 +145,17 @@ def main() -> int:
 
     sub.add_parser("admin-token", help="Issue an admin token").set_defaults(func=cmd_admin_token)
 
+    p_health = sub.add_parser("health", help="Call /api/healthz on host:port")
+    p_health.add_argument("--host", default="127.0.0.1")
+    p_health.add_argument("--port", type=int, default=8000)
+    p_health.set_defaults(func=cmd_health)
+
+    sub.add_parser("stats", help="Print table counts").set_defaults(func=cmd_stats)
+    sub.add_parser("list-companies", help="List companies").set_defaults(func=cmd_list_companies)
+
     args = parser.parse_args()
     return int(args.func(args))
 
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

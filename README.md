@@ -154,6 +154,13 @@ PYTHONPATH=. python scripts/manage.py impersonate-token --slug demo-co
 
 # 관리자 토큰 발급
 python scripts/manage.py admin-token
+
+# 헬스체크 호출(기본 127.0.0.1:8000)
+PYTHONPATH=. python scripts/manage.py health --host 127.0.0.1 --port 8000
+
+# 테이블 통계/회사 목록
+PYTHONPATH=. python scripts/manage.py stats
+PYTHONPATH=. python scripts/manage.py list-companies
 ```
 
 ## 마이그레이션(Alembic)

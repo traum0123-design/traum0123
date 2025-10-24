@@ -30,6 +30,15 @@ downgrade:
 manage:
 	python scripts/manage.py -h
 
+health:
+	PYTHONPATH=. python scripts/manage.py health --host 127.0.0.1 --port 8000
+
+stats:
+	PYTHONPATH=. python scripts/manage.py stats
+
+list-companies:
+	PYTHONPATH=. python scripts/manage.py list-companies
+
 docker-build:
 	docker build -t payroll-portal:dev .
 
