@@ -32,7 +32,7 @@ jobs:
       - name: mypy (types)
         env:
           PYTHONPATH: .
-        run: mypy app payroll_api core/services/payroll.py
+        run: mypy app payroll_api core/services/payroll.py core/exporter.py
 
   test:
     name: Build, Migrate, and Test

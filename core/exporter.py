@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import datetime as dt
 from io import BytesIO
+from typing import Iterable
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
-from typing import Iterable
 
 from openpyxl import Workbook
-from openpyxl.styles import Alignment, Font, PatternFill, Border, Side
+from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
+
 from .schema import DEFAULT_COLUMNS  # re-exported default columns for consumers
 
 
@@ -150,9 +151,9 @@ def build_salesmap_workbook(
     # Leave multi-level headers unmerged so exported sheet retains explicit columns.
 
     max_col = len(row2)
-    for r in (1, 2):
+    for hdr_row in (1, 2):
         for c in range(1, max_col + 1):
-            cell = ws.cell(row=r, column=c)
+            cell = ws.cell(row=hdr_row, column=c)
             cell.fill = head_fill
             cell.font = bold
             cell.alignment = center
@@ -277,7 +278,7 @@ def build_salesmap_workbook(
                         pass
             return s
 
-        values = ["합계", "", "", ""]
+        values: list[int | str] = ["합계", "", "", ""]
         for i, _ in enumerate(earn_labels, start=0):
             col_idx = len(left_fixed) + 1 + i
             values.append(sum_col(col_idx))
@@ -291,7 +292,10 @@ def build_salesmap_workbook(
         deduct_total = sum_col(start_d + len(deduct_labels))
         values.append(deduct_total)
         deduct_total_idx = len(values) - 1
-        net_total = (values[allow_total_idx] if allow_total_idx < len(values) else 0) - (values[deduct_total_idx] if deduct_total_idx < len(values) else 0)
+        from typing import cast
+        allow_v = cast(int, values[allow_total_idx]) if allow_total_idx < len(values) else 0
+        deduct_v = cast(int, values[deduct_total_idx]) if deduct_total_idx < len(values) else 0
+        net_total = allow_v - deduct_v
         values.append(net_total)
 
         for i, v in enumerate(values, start=1):
