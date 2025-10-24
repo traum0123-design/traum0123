@@ -9,6 +9,7 @@ __pycache__/
 *.db-wal
 *.log
 .venv/
+.venv_ci/
 payroll_portal/.venv/
 payroll_portal/#/
 payroll_portal/app.db
