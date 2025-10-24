@@ -14,7 +14,6 @@ from core.schema import (
     DEFAULT_DATE_FIELDS,
     DEFAULT_NUMERIC_FIELDS,
 )
-
 from core.utils.dates import parse_date_flex
 
 from .extra_fields import ensure_defaults, normalize_label
@@ -42,7 +41,9 @@ def _env_int(key: str, default: int | None) -> int | None:
 
 def _env_str(key: str, default: str) -> str:
     val = os.environ.get(key)
-    return val if val not in (None, "") else default
+    if val is None or val == "":
+        return default
+    return val
 
 
 INSURANCE_CONFIG = {
@@ -145,10 +146,11 @@ def load_field_prefs(session: Session, company: Company):
     alias_map: Dict[str, str] = {}
     # Start with base exemptions from config (enabled if limit > 0)
     exempt_map: Dict[str, dict] = {}
-    base_ex = INSURANCE_CONFIG.get("base_exemptions", {}) or {}
+    from typing import cast
+    base_ex = cast(dict[str, object], INSURANCE_CONFIG.get("base_exemptions", {}) or {})
     for name, limit in base_ex.items():
         try:
-            limit_val = int(limit or 0)
+            limit_val = int(float(str(limit or 0)))
         except Exception:
             limit_val = 0
         if limit_val <= 0:
