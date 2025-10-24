@@ -131,6 +131,28 @@ PYTHONPATH=. python scripts/dev_seed.py
 # 출력된 포털 로그인 URL/코드로 테스트
 ```
 
+### 관리 CLI (scripts/manage.py)
+
+주요 개발 작업을 한 곳에서 실행할 수 있는 관리 스크립트를 제공합니다.
+
+```bash
+# 마이그레이션 적용/되돌리기 (기본 SQLite 경로 사용 예)
+DATABASE_URL=sqlite:///./payroll_portal/app.db python scripts/manage.py migrate
+DATABASE_URL=sqlite:///./payroll_portal/app.db python scripts/manage.py downgrade  # base로
+
+# 데모 시드
+PYTHONPATH=. python scripts/manage.py seed-demo
+
+# 회사 생성 및 접속코드 출력
+PYTHONPATH=. python scripts/manage.py create-company --name "데모회사" --slug demo-co
+
+# 회사 가장 토큰 발급(관리자 가장용 포털 토큰)
+PYTHONPATH=. python scripts/manage.py impersonate-token --slug demo-co
+
+# 관리자 토큰 발급
+python scripts/manage.py admin-token
+```
+
 ## 마이그레이션(Alembic)
 
 개발 초기에는 자동 DDL 생성이 가능하지만(설정에 따라), 운영에서는 Alembic으로 스키마를 관리하세요.
