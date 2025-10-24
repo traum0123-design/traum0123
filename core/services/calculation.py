@@ -1,13 +1,18 @@
 from __future__ import annotations
 
-from decimal import Decimal, ROUND_HALF_UP, ROUND_HALF_DOWN, ROUND_UP, ROUND_DOWN
+from decimal import ROUND_DOWN, ROUND_HALF_DOWN, ROUND_HALF_UP, ROUND_UP, Decimal
 from typing import Dict, Tuple
 
 from sqlalchemy.orm import Session
 
 from core.models import Company
 
-from .payroll import build_columns_for_company, compute_withholding_tax, insurance_settings, load_field_prefs
+from .payroll import (
+    build_columns_for_company,
+    compute_withholding_tax,
+    insurance_settings,
+    load_field_prefs,
+)
 
 DEDUCTION_FIELDS = {"국민연금", "건강보험", "장기요양보험", "고용보험", "소득세", "지방소득세"}
 
@@ -137,12 +142,25 @@ def compute_deductions(
         min_base = cfg.get("min_base")
         max_base = cfg.get("max_base")
         if min_base is not None:
-            base_d = max(base_d, Decimal(min_base))
+            try:
+                base_d = max(base_d, Decimal(str(min_base)))
+            except Exception:
+                pass
         if max_base is not None:
-            base_d = min(base_d, Decimal(max_base))
-        rate = Decimal(cfg.get(rate_key, 0) or 0)
+            try:
+                base_d = min(base_d, Decimal(str(max_base)))
+            except Exception:
+                pass
+        try:
+            rate = Decimal(str(cfg.get(rate_key, 0) or 0))
+        except Exception:
+            rate = Decimal(0)
         raw = base_d * rate
-        step = int(cfg.get("round_to") or 10)
+        step_val = cfg.get("round_to")
+        try:
+            step = int(float(str(step_val))) if step_val is not None else 10
+        except Exception:
+            step = 10
         mode = str(cfg.get("rounding") or "round")
         return _round_amount(raw, step, mode)
 
@@ -153,7 +171,10 @@ def compute_deductions(
     national_pension = calc_amount(nps_cfg, "rate", base_np)
     health_insurance = calc_amount(nhis_cfg, "rate", base_nhis)
 
-    ltc_rate = Decimal(nhis_cfg.get("ltc_rate", Decimal("0.1295")))
+    try:
+        ltc_rate = Decimal(str(nhis_cfg.get("ltc_rate", 0.1295)))
+    except Exception:
+        ltc_rate = Decimal("0.1295")
     ltc_step = int(nhis_cfg.get("ltc_round_to") or nhis_cfg.get("round_to") or 10)
     ltc_mode = str(nhis_cfg.get("ltc_rounding") or nhis_cfg.get("rounding") or "round")
     long_term_care = _round_amount(Decimal(health_insurance) * ltc_rate, ltc_step, ltc_mode)
@@ -165,7 +186,7 @@ def compute_deductions(
     income_tax = compute_withholding_tax(session, year, dependents, wage)
     local_tax = int(round((income_tax or 0) * 0.1))
 
-    metadata = {
+    metadata: Dict[str, object] = {
         "default_base": default_base,
         "base_national_pension": base_np,
         "base_health_insurance": base_nhis,

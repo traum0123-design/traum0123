@@ -10,4 +10,4 @@ repos:
     hooks:
       - id: mypy
         additional_dependencies: []
-        files: '^(app|payroll_api)/|^core/services/payroll\.py$|^core/exporter\.py$'
+        files: '^(app|payroll_api)/|^core/services/payroll\.py$|^core/exporter\.py$|^core/services/calculation\.py$'

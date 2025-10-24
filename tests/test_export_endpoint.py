@@ -6,10 +6,14 @@ from fastapi.testclient import TestClient
 
 
 def test_export_sets_filename(monkeypatch):
+    # Use in-memory DB and import after setting env to avoid cached engine reuse
+    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
+
     # Minimal app with API router mounted
     from app.main import create_app
     from sqlalchemy.orm import Session
     from core.models import Company, MonthlyPayroll
+    import secrets
     import datetime as dt
 
     app = create_app()
@@ -18,11 +22,11 @@ def test_export_sets_filename(monkeypatch):
     # Seed in-memory DB
     from core.db import get_sessionmaker, init_database
 
-    monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
     init_database(auto_apply_ddl=True)
     SessionLocal = get_sessionmaker()
+    slug = f"demo_{secrets.token_hex(3)}"
     with SessionLocal() as db:  # type: Session
-        c = Company(name="테스트회사", slug="demo", access_hash="x", token_key="", created_at=dt.datetime.now(dt.timezone.utc))
+        c = Company(name="테스트회사", slug=slug, access_hash="x", token_key="", created_at=dt.datetime.now(dt.timezone.utc))
         db.add(c)
         db.commit()
         db.refresh(c)
@@ -32,7 +36,7 @@ def test_export_sets_filename(monkeypatch):
 
     # Impersonate via cookie by visiting admin page first isn't trivial here;
     # directly call backend export API which does not require cookie (portal/api path exists)
-    r = client.get("/api/portal/demo/withholding?year=2024&dep=1&wage=2000000")
+    r = client.get(f"/api/portal/{slug}/withholding?year=2024&dep=1&wage=2000000")
     assert r.status_code in (200, 403, 404)  # just smoke test the API wire-up
 
     # Directly hit FastAPI export method from payroll_api (bypassing portal guard)
@@ -40,7 +44,7 @@ def test_export_sets_filename(monkeypatch):
     from core.exporter import build_salesmap_workbook
 
     bio: io.BytesIO = build_salesmap_workbook(
-        company_slug="demo",
+        company_slug=slug,
         year=2024,
         month=5,
         rows=[{"사원코드": "E01", "사원명": "홍길동", "기본급": 2000000, "소득세": 100000, "지방소득세": 10000}],
@@ -59,4 +63,3 @@ def test_export_sets_filename(monkeypatch):
     header = bio.read(2)
     # XLSX (zip) magic: PK
     assert header == b"PK"
-
