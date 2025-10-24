@@ -1,3 +1,2 @@
-"""Unified FastAPI application package."""
+# Mark app as a package
 
-from .main import app, create_app  # noqa: F401

@@ -1046,3 +1046,13 @@ def compute_withholding_tax(
     db: Session, *, year: int, dependents: int, wage: int
 ) -> int:
     return int(compute_withholding_tax_service(db, year, dependents, wage) or 0)
+# Lightweight admin guard usable both in FastAPI routes and direct calls
+def require_admin(
+    authorization: Optional[str] = None,
+    x_admin_token: Optional[str] = None,
+    query_token: Optional[str] = None,
+    admin_cookie: Optional[str] = None,
+) -> None:
+    tok = extract_token(authorization, x_admin_token, query_token, admin_cookie)
+    if not tok or not authenticate_admin(tok):
+        raise HTTPException(status_code=403, detail="forbidden")
