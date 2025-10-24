@@ -993,10 +993,10 @@ def api_export(
 def require_company(
     slug: str,
     db: Session,
-    authorization: Optional[str] = Header(None),
-    x_api_token: Optional[str] = Header(None),
+    authorization: Optional[str] = None,
+    x_api_token: Optional[str] = None,
     token: Optional[str] = None,
-    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+    portal_cookie: Optional[str] = None,
 ) -> Company:
     tok = extract_token(authorization, x_api_token, token, portal_cookie)
     if not tok:
@@ -1041,3 +1041,8 @@ def create_app() -> FastAPI:
 
 
 app = create_app()
+# Simple helper to expose withholding tax computation for tests and internal callers
+def compute_withholding_tax(
+    db: Session, *, year: int, dependents: int, wage: int
+) -> int:
+    return int(compute_withholding_tax_service(db, year, dependents, wage) or 0)
