@@ -1,4 +1,4 @@
--r payroll_portal/requirements.txt
+-r requirements.lock
 
 # Test
 pytest
@@ -6,4 +6,3 @@ pytest
 # Lint / Type-check
 ruff
 mypy
-
