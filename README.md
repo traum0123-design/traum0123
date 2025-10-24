@@ -16,7 +16,7 @@
 ```bash
 python -m venv .venv
 source .venv/bin/activate          # Windows: .venv\Scripts\activate
-pip install -r payroll_portal/requirements.txt
+pip install -r requirements.lock --require-hashes  # 또는 개발용: -r requirements-dev.txt
 
 # 관리자 비밀번호는 해시 문자열을 사용합니다. (아래 예시는 1234를 해시한 값)
 export ADMIN_PASSWORD=$(python - <<'PY'
@@ -53,7 +53,7 @@ uvicorn app.main:app --reload
 
 ```bash
 python3 -m compileall app core gateway payroll_api tests   # 최소 문법 검증
-# pytest 실행 시에는 openpyxl, sqlalchemy 등 의존성 설치 필요
+# pytest 실행 시에는 requirements-dev.txt 설치 필요
 PYTHONPATH=. pytest tests/test_payroll_service.py tests/test_excel_export.py
 ```
 
@@ -71,7 +71,7 @@ PYTHONPATH=. pytest tests/test_payroll_service.py tests/test_excel_export.py
 
 아래 Dockerfile이 포함되어 있어 컨테이너로 쉽게 배포할 수 있습니다.
 
-빌드
+빌드 (잠금파일 사용)
 ```bash
 docker build -t traum0123/payroll-portal:latest .
 ```
@@ -89,9 +89,23 @@ docker run --rm -p 8000:8000 \
 ```
 
 참고
-- 컨테이너는 `PORT` 환경변수를 지원하며, 지정되지 않으면 8000 포트로 구동됩니다.
+- 컨테이너는 `PORT`, `UVICORN_WORKERS` 환경변수를 지원합니다.
+- 지정되지 않으면 8000 포트, 워커 2개로 구동됩니다.
 - 운영 환경에서는 `.env`를 이미지에 포함하지 말고, 배포 플랫폼의 시크릿/환경변수 기능을 사용하세요.
 - 헬스체크 엔드포인트: `/api/healthz` (200 응답 기대)
+
+## 개발 편의(선택)
+
+Makefile 제공
+```bash
+make install-dev   # 개발 의존성 설치
+make lint          # ruff 린트
+make type          # mypy 타입체크
+make migrate       # SQLite로 Alembic 적용
+make test          # pytest 실행
+```
+
+.env 템플릿: `.env.example` 참고
 
 ## 마이그레이션(Alembic)
 
@@ -108,3 +122,20 @@ alembic revision -m "<message>"
 
 환경 변수
 - `DATABASE_URL`이 지정되지 않으면 `sqlite:///./payroll_portal/app.db`로 동작합니다.
+
+## Docker Compose(개발용)
+
+PostgreSQL + Redis와 함께 로컬에서 구동할 수 있는 `docker-compose.yml`을 제공합니다.
+
+```bash
+# .env에 ADMIN_PASSWORD/SECRET_KEY 설정 후
+docker compose up --build
+
+# 앱: http://127.0.0.1:8000
+# DB 연결: postgresql+psycopg://postgres:postgres@db:5432/payroll
+# Redis: redis://redis:6379/0
+```
+
+메모
+- Postgres 드라이버로 `psycopg[binary]`를 사용합니다(잠금파일에 포함).
+- CI/도커 모두 Python 3.12를 사용해 잠금파일과 일치합니다.
