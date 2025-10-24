@@ -8,4 +8,5 @@ services:
     environment:
       UVICORN_WORKERS: 1
       PAYROLL_AUTO_APPLY_DDL: 1
-
+      UVICORN_LOG_LEVEL: debug
+      API_CORS_ORIGINS: http://localhost:5173,http://127.0.0.1:5173

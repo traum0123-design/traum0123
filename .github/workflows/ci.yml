@@ -24,6 +24,9 @@ jobs:
       - name: Editable install (packaging sanity)
         run: |
           pip install -e .
+      - name: Pre-commit hooks
+        run: |
+          pre-commit run --all-files --show-diff-on-failure
       - name: Ruff (lint)
         run: ruff check .
       - name: mypy (types)

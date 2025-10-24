@@ -127,6 +127,10 @@ python -c "import core, app, payroll_api; print('editable ok')"
 docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 ```
 
+환경 변수 팁
+- CORS: `API_CORS_ORIGINS`에 허용할 오리진을 콤마로 구분해 지정하세요.
+- 로깅: `UVICORN_LOG_LEVEL`로 앱 로그 레벨을 조정합니다(`debug`/`info`/...).
+
 ### 샘플 데이터 시드
 
 ```bash
