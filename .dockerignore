@@ -1,0 +1,22 @@
+# Exclude VCS and local environment
+.git
+.gitignore
+.venv
+.pytest_cache
+__pycache__
+*.pyc
+*.pyo
+*.pyd
+
+# Local databases and artifacts
+*.db
+*.sqlite3
+payroll_portal/*.db
+
+# Tests and docs not needed in runtime image
+tests
+docs
+
+# Secrets / local overrides (set via env at deploy time)
+.env
+

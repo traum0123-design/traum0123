@@ -66,3 +66,29 @@ PYTHONPATH=. pytest tests/test_payroll_service.py tests/test_excel_export.py
 ## QA 체크리스트
 
 수동 점검이 필요한 주요 흐름(관리자 회사 생성, 포털 급여 저장/마감, 토큰 검증 등)은 `docs/QA_CHECKLIST.md`를 참고하세요. 점검 시 발견된 사항은 문서에 주석으로 남기고, 필요한 경우 테스트 추가를 권장합니다.
+
+## 배포(Docker)
+
+아래 Dockerfile이 포함되어 있어 컨테이너로 쉽게 배포할 수 있습니다.
+
+빌드
+```bash
+docker build -t traum0123/payroll-portal:latest .
+```
+
+실행(개발 예시)
+```bash
+# 필수 환경변수: ADMIN_PASSWORD, SECRET_KEY (운영 환경에서 전달 권장)
+docker run --rm -p 8000:8000 \
+  -e ADMIN_PASSWORD="<해시 문자열>" \
+  -e SECRET_KEY="<임의의-비밀값>" \
+  -e DATABASE_URL="sqlite:///./payroll_portal/app.db" \
+  traum0123/payroll-portal:latest
+
+# 브라우저에서 http://127.0.0.1:8000 접속
+```
+
+참고
+- 컨테이너는 `PORT` 환경변수를 지원하며, 지정되지 않으면 8000 포트로 구동됩니다.
+- 운영 환경에서는 `.env`를 이미지에 포함하지 말고, 배포 플랫폼의 시크릿/환경변수 기능을 사용하세요.
+- 헬스체크 엔드포인트: `/api/healthz` (200 응답 기대)
