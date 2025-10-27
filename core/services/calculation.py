@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from decimal import ROUND_DOWN, ROUND_HALF_DOWN, ROUND_HALF_UP, ROUND_UP, Decimal
-from typing import Dict, Tuple
 
 from sqlalchemy.orm import Session
 
@@ -44,7 +43,7 @@ def _round_amount(amount: Decimal, step: int, mode: str) -> int:
     return int(rounded * q)
 
 
-def _selected_base(values: Dict[str, int], selected: Dict[str, bool], exemptions: Dict[str, int]) -> int:
+def _selected_base(values: dict[str, int], selected: dict[str, bool], exemptions: dict[str, int]) -> int:
     subtotal = 0
     seen = set()
     for field, flag in (selected or {}).items():
@@ -59,7 +58,7 @@ def _selected_base(values: Dict[str, int], selected: Dict[str, bool], exemptions
     return max(0, subtotal)
 
 
-def _default_base(values: Dict[str, int], earnings: set[str], exemptions: Dict[str, int]) -> int:
+def _default_base(values: dict[str, int], earnings: set[str], exemptions: dict[str, int]) -> int:
     base = 0
     for field in earnings:
         if field in DEDUCTION_FIELDS:
@@ -74,9 +73,9 @@ def _default_base(values: Dict[str, int], earnings: set[str], exemptions: Dict[s
 def compute_deductions(
     session: Session,
     company: Company,
-    row: Dict[str, object],
+    row: dict[str, object],
     year: int,
-) -> Tuple[Dict[str, int], Dict[str, object]]:
+) -> tuple[dict[str, int], dict[str, object]]:
     cols, _, _, _, extras = build_columns_for_company(session, company)
     group_map, alias_map, exempt_map, include_map = load_field_prefs(session, company)
     insurance = insurance_settings()
@@ -103,12 +102,12 @@ def compute_deductions(
                 earnings_fields.add(name)
 
     # Normalize numeric values
-    values: Dict[str, int] = {}
+    values: dict[str, int] = {}
     for key, val in (row or {}).items():
         values[key] = _to_int(val)
 
     # Build exemptions map (field -> limit)
-    exemptions: Dict[str, int] = {}
+    exemptions: dict[str, int] = {}
     for field, conf in (exempt_map or {}).items():
         if not conf:
             continue
@@ -136,7 +135,7 @@ def compute_deductions(
     base_nhis = _selected_base(values, inc_nhis, exemptions) if inc_nhis else default_base
     base_ei = _selected_base(values, inc_ei, exemptions) if inc_ei else default_base
 
-    def calc_amount(cfg: Dict[str, object], rate_key: str, base: int) -> int:
+    def calc_amount(cfg: dict[str, object], rate_key: str, base: int) -> int:
         cfg = cfg or {}
         base_d = Decimal(max(0, base))
         min_base = cfg.get("min_base")
@@ -186,7 +185,7 @@ def compute_deductions(
     income_tax = compute_withholding_tax(session, year, dependents, wage)
     local_tax = int(round((income_tax or 0) * 0.1))
 
-    metadata: Dict[str, object] = {
+    metadata: dict[str, object] = {
         "default_base": default_base,
         "base_national_pension": base_np,
         "base_health_insurance": base_nhis,

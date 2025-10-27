@@ -10,11 +10,11 @@ def test_export_sets_filename(monkeypatch):
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
     # Minimal app with API router mounted
-    from app.main import create_app
-    from sqlalchemy.orm import Session
-    from core.models import Company, MonthlyPayroll
-    import secrets
     import datetime as dt
+    import secrets
+    from sqlalchemy.orm import Session
+    from app.main import create_app
+    from core.models import Company, MonthlyPayroll
 
     app = create_app()
     client = TestClient(app)
@@ -26,7 +26,7 @@ def test_export_sets_filename(monkeypatch):
     SessionLocal = get_sessionmaker()
     slug = f"demo_{secrets.token_hex(3)}"
     with SessionLocal() as db:  # type: Session
-        c = Company(name="테스트회사", slug=slug, access_hash="x", token_key="", created_at=dt.datetime.now(dt.timezone.utc))
+        c = Company(name="테스트회사", slug=slug, access_hash="x", token_key="", created_at=dt.datetime.now(dt.UTC))
         db.add(c)
         db.commit()
         db.refresh(c)

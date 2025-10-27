@@ -1,7 +1,7 @@
 from __future__ import annotations
 
-import datetime as dt
 import copy
+import datetime as dt
 
 import pytest
 
@@ -16,7 +16,7 @@ def company(session):
         slug="test-co",
         access_hash="hash",
         token_key="",
-        created_at=dt.datetime.now(dt.timezone.utc),
+        created_at=dt.datetime.now(dt.UTC),
     )
     session.add(comp)
     session.commit()
@@ -109,4 +109,3 @@ def test_compute_deductions_honours_base_exemptions(session, company, insure_con
     assert meta["default_base"] == 2_100_000
     assert amounts["national_pension"] == 94_500
     assert amounts["income_tax"] == 110_000
-

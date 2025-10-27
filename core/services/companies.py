@@ -7,9 +7,8 @@ from sqlalchemy.orm import Session
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from core.models import Company
-from core.settings import get_settings
-
 from core.repositories import companies as companies_repo
+from core.settings import get_settings
 
 
 def verify_admin_password(password: str) -> bool:
@@ -50,9 +49,9 @@ def ensure_token_key(session: Session, company: Company) -> None:
     session.commit()
 
 
-def find_company_by_slug(session: Session, slug: str) -> Optional[Company]:
+def find_company_by_slug(session: Session, slug: str) -> Company | None:
     return companies_repo.get_by_slug(session, slug)
 
 
-def find_company_by_id(session: Session, company_id: int) -> Optional[Company]:
+def find_company_by_id(session: Session, company_id: int) -> Company | None:
     return companies_repo.get_by_id(session, company_id)

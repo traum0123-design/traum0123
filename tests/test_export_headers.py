@@ -10,10 +10,10 @@ def test_portal_export_sets_disposition_header(monkeypatch):
     # In-memory DB
     monkeypatch.setenv("DATABASE_URL", "sqlite:///:memory:")
 
+    import secrets
     from app.main import create_app
     from core.db import get_sessionmaker, init_database
     from core.models import Company, MonthlyPayroll
-    import secrets
     from core.services.auth import issue_company_token
 
     init_database(auto_apply_ddl=True)
@@ -25,7 +25,7 @@ def test_portal_export_sets_disposition_header(monkeypatch):
             slug=slug,
             access_hash="x",
             token_key="",
-            created_at=dt.datetime.now(dt.timezone.utc),
+            created_at=dt.datetime.now(dt.UTC),
         )
         db.add(company)
         db.commit()

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Dict, List, Optional
+from typing import Any, Optional
 
 from pydantic import BaseModel, Field
 
@@ -32,7 +32,7 @@ class WithholdingResponse(BaseModel):
 
 class PayrollRowsResponse(BaseModel):
     ok: bool = True
-    rows: List[Dict[str, Any]]
+    rows: list[dict[str, Any]]
 
 
 class CompanySummary(BaseModel):
@@ -44,7 +44,7 @@ class CompanySummary(BaseModel):
 
 class AdminCompaniesResponse(BaseModel):
     ok: bool = True
-    companies: List[CompanySummary]
+    companies: list[CompanySummary]
 
 
 class AdminCompanyCreateResponse(BaseModel):
@@ -67,18 +67,18 @@ class WithholdingImportResponse(BaseModel):
 
 class PayrollCalcRequest(BaseModel):
     year: int
-    row: Dict[str, Any] = Field(default_factory=dict)
+    row: dict[str, Any] = Field(default_factory=dict)
 
 
 class PayrollCalcResponse(BaseModel):
     ok: bool = True
-    amounts: Dict[str, int] = Field(default_factory=dict)
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    amounts: dict[str, int] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
 
 
 class WithholdingYearsResponse(BaseModel):
     ok: bool = True
-    years: List[List[int]]
+    years: list[list[int]]
 
 
 class ClientLogPayload(BaseModel):
@@ -93,8 +93,8 @@ class ClientLogPayload(BaseModel):
 
 
 class FieldCalcInclude(BaseModel):
-    nhis: Dict[str, bool] = Field(default_factory=dict)
-    ei: Dict[str, bool] = Field(default_factory=dict)
+    nhis: dict[str, bool] = Field(default_factory=dict)
+    ei: dict[str, bool] = Field(default_factory=dict)
 
 
 class FieldCalcConfigResponse(BaseModel):
@@ -103,7 +103,7 @@ class FieldCalcConfigResponse(BaseModel):
 
 
 class FieldCalcConfigRequest(BaseModel):
-    include: Dict[str, Dict[str, bool]] = Field(default_factory=dict)
+    include: dict[str, dict[str, bool]] = Field(default_factory=dict)
 
 
 class FieldExemptEntry(BaseModel):
@@ -113,12 +113,12 @@ class FieldExemptEntry(BaseModel):
 
 class FieldExemptConfigResponse(BaseModel):
     ok: bool = True
-    exempt: Dict[str, FieldExemptEntry] = Field(default_factory=dict)
-    base: Dict[str, int] = Field(default_factory=dict)
+    exempt: dict[str, FieldExemptEntry] = Field(default_factory=dict)
+    base: dict[str, int] = Field(default_factory=dict)
 
 
 class FieldExemptConfigRequest(BaseModel):
-    exempt: Dict[str, FieldExemptEntry] = Field(default_factory=dict)
+    exempt: dict[str, FieldExemptEntry] = Field(default_factory=dict)
 
 
 class FieldAddRequest(BaseModel):
@@ -143,8 +143,8 @@ class FieldDeleteRequest(BaseModel):
 
 
 class FieldGroupConfigRequest(BaseModel):
-    map: Dict[str, str] = Field(default_factory=dict)
-    alias: Dict[str, str] = Field(default_factory=dict)
+    map: dict[str, str] = Field(default_factory=dict)
+    alias: dict[str, str] = Field(default_factory=dict)
 
 
 class FieldGroupConfigResponse(BaseModel):

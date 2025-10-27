@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import datetime as dt
-
 from sqlalchemy.orm import Session
 
 
@@ -17,4 +15,3 @@ def test_withholding_compute_helper(session: Session):
     # Compute exact match and nearest lower
     assert api_main.compute_withholding_tax(session, year=2024, dependents=1, wage=2_999_999) == 110_000
     assert api_main.compute_withholding_tax(session, year=2024, dependents=1, wage=3_000_000) == 123_000
-

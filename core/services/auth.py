@@ -11,11 +11,11 @@ from core.settings import get_settings
 
 
 def extract_token(
-    authorization: Optional[str],
-    header_token: Optional[str],
-    query_token: Optional[str],
-    cookie_token: Optional[str] = None,
-) -> Optional[str]:
+    authorization: str | None,
+    header_token: str | None,
+    query_token: str | None,
+    cookie_token: str | None = None,
+) -> str | None:
     """Normalize token retrieval across headers/query params."""
 
     if cookie_token:
@@ -37,7 +37,7 @@ def extract_token(
     return None
 
 
-def authenticate_company(session: Session, slug: Optional[str], token: str) -> Optional[Company]:
+def authenticate_company(session: Session, slug: str | None, token: str) -> Company | None:
     secret = get_settings().secret_key
     payload = verify_company_token(secret, token)
     if not payload:
@@ -60,7 +60,7 @@ def authenticate_company(session: Session, slug: Optional[str], token: str) -> O
     return company
 
 
-def issue_company_token(session: Session, company: Company, *, ttl_seconds: Optional[int] = None, is_admin: bool = False, ensure_key: bool = True) -> str:
+def issue_company_token(session: Session, company: Company, *, ttl_seconds: int | None = None, is_admin: bool = False, ensure_key: bool = True) -> str:
     from core.services import companies as company_service  # local import to avoid circular import
 
     if ensure_key:
@@ -78,7 +78,7 @@ def authenticate_admin(token: str) -> bool:
     return payload is not None
 
 
-def issue_admin_token(*, ttl_seconds: Optional[int] = None) -> str:
+def issue_admin_token(*, ttl_seconds: int | None = None) -> str:
     secret = get_settings().secret_key
     ttl = ttl_seconds if ttl_seconds is not None else int(getattr(get_settings(), "admin_token_ttl", 7200) or 7200)
     return make_admin_token(secret, ttl_seconds=ttl)

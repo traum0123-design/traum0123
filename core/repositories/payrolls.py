@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from core.models import MonthlyPayroll, WithholdingCell
 
 
-def list_for_year(session: Session, company_id: int, year: int) -> List[MonthlyPayroll]:
+def list_for_year(session: Session, company_id: int, year: int) -> list[MonthlyPayroll]:
     return (
         session.query(MonthlyPayroll)
         .filter(MonthlyPayroll.company_id == company_id, MonthlyPayroll.year == year)
@@ -15,7 +15,7 @@ def list_for_year(session: Session, company_id: int, year: int) -> List[MonthlyP
     )
 
 
-def get_by_month(session: Session, company_id: int, year: int, month: int) -> Optional[MonthlyPayroll]:
+def get_by_month(session: Session, company_id: int, year: int, month: int) -> MonthlyPayroll | None:
     return (
         session.query(MonthlyPayroll)
         .filter(
@@ -38,7 +38,7 @@ def latest_withholding(
     year: int,
     dependents: int,
     wage: int,
-) -> Optional[WithholdingCell]:
+) -> WithholdingCell | None:
     return (
         session.query(WithholdingCell)
         .filter(

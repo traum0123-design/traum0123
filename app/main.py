@@ -5,8 +5,8 @@ from pathlib import Path
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.staticfiles import StaticFiles
 from fastapi.responses import RedirectResponse
+from fastapi.staticfiles import StaticFiles
 
 from payroll_api.main import lifespan as api_lifespan, router as api_router
 

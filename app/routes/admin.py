@@ -16,8 +16,8 @@ from payroll_api.database import get_db
 
 from .portal import (
     ADMIN_COOKIE_NAME,
-    PORTAL_COOKIE_NAME,
     COOKIE_SECURE,
+    PORTAL_COOKIE_NAME,
     _apply_template_security,
     _base_context,
     _is_admin,

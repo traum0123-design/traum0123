@@ -1,13 +1,13 @@
 from __future__ import annotations
 
-from typing import List, Optional
+from typing import Optional
 
 from sqlalchemy.orm import Session
 
 from core.models import ExtraField
 
 
-def list_for_company(session: Session, company_id: int) -> List[ExtraField]:
+def list_for_company(session: Session, company_id: int) -> list[ExtraField]:
     return (
         session.query(ExtraField)
         .filter(ExtraField.company_id == company_id)
@@ -16,7 +16,7 @@ def list_for_company(session: Session, company_id: int) -> List[ExtraField]:
     )
 
 
-def find_by_label(session: Session, company_id: int, label: str) -> Optional[ExtraField]:
+def find_by_label(session: Session, company_id: int, label: str) -> ExtraField | None:
     return (
         session.query(ExtraField)
         .filter(ExtraField.company_id == company_id, ExtraField.label == label)
@@ -24,7 +24,7 @@ def find_by_label(session: Session, company_id: int, label: str) -> Optional[Ext
     )
 
 
-def find_by_name(session: Session, company_id: int, name: str) -> Optional[ExtraField]:
+def find_by_name(session: Session, company_id: int, name: str) -> ExtraField | None:
     return (
         session.query(ExtraField)
         .filter(ExtraField.company_id == company_id, ExtraField.name == name)

@@ -1,8 +1,1 @@
--r requirements.lock
-
-# Test
-pytest
-
-# Lint / Type-check
-ruff
-mypy
+-r requirements-dev.lock

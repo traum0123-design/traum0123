@@ -6,7 +6,6 @@ from sqlalchemy.orm import Session
 
 from core.models import Company, WithholdingCell
 from core.services.auth import issue_company_token
-
 from payroll_api import main as api_main
 
 
@@ -28,7 +27,7 @@ def test_issue_and_require_company_token(session: Session):
         slug="test-co",
         access_hash="dummy",
         token_key="",
-        created_at=dt.datetime.now(dt.timezone.utc),
+        created_at=dt.datetime.now(dt.UTC),
     )
     session.add(company)
     session.commit()

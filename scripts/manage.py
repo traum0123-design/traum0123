@@ -8,7 +8,7 @@ from typing import Optional
 from sqlalchemy import text
 
 from core.db import init_database, session_scope
-from core.models import Company, MonthlyPayroll, MonthlyPayrollRow, ExtraField, FieldPref, WithholdingCell
+from core.models import Company, ExtraField, FieldPref, MonthlyPayroll, MonthlyPayrollRow, WithholdingCell
 from core.services import companies as company_service
 from core.services.auth import issue_admin_token, issue_company_token
 
@@ -56,10 +56,10 @@ def cmd_create_company(args: argparse.Namespace) -> int:
 
 
 def cmd_impersonate_token(args: argparse.Namespace) -> int:
-    company_id: Optional[int] = args.company_id
-    slug: Optional[str] = args.slug
+    company_id: int | None = args.company_id
+    slug: str | None = args.slug
     with session_scope() as session:
-        comp: Optional[Company] = None
+        comp: Company | None = None
         if company_id:
             comp = session.get(Company, company_id)
         elif slug:

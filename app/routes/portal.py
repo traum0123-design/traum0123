@@ -8,13 +8,24 @@ from pathlib import Path
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
-from fastapi.responses import HTMLResponse, JSONResponse, RedirectResponse, StreamingResponse
+from fastapi.responses import (
+    HTMLResponse,
+    JSONResponse,
+    RedirectResponse,
+    StreamingResponse,
+)
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.exporter import build_salesmap_workbook
 from core.models import Company, MonthlyPayroll
 from core.services import companies as company_service
+from core.services.auth import (
+    authenticate_admin,
+    authenticate_company,
+    extract_token,
+    issue_company_token,
+)
 from core.services.extra_fields import add_extra_field, ensure_defaults
 from core.services.payroll import (
     build_columns_for_company,
@@ -26,7 +37,6 @@ from core.services.payroll import (
     parse_rows,
 )
 from core.services.persistence import sync_normalized_rows
-from core.services.auth import authenticate_admin, authenticate_company, extract_token, issue_company_token
 from payroll_api.database import get_db
 from payroll_portal.services.rate_limit import limiter, portal_login_key
 

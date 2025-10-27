@@ -28,7 +28,7 @@ exclude = [
 ]
 
 [tool.ruff.lint]
-select = ["E", "F"]
+select = ["E", "F", "I", "UP"]
 ignore = [
   "E203",  # whitespace before ':' (formatter compat)
   "E266",  # too many leading '#' for block comment

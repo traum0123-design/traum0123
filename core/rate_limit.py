@@ -4,7 +4,7 @@ import logging
 import os
 import threading
 import time
-from typing import Optional, Protocol
+from typing import Protocol
 
 from .settings import get_settings
 
@@ -81,7 +81,7 @@ class RateLimiter:
         self._backend.reset(key)
 
 
-_singleton: Optional[RateLimiter] = None
+_singleton: RateLimiter | None = None
 _singleton_lock = threading.Lock()
 
 

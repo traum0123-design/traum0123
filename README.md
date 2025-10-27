@@ -33,6 +33,36 @@
 - `tests/`: in-memory SQLite와 openpyxl을 활용한 단위 테스트 초안
 - `docs/QA_CHECKLIST.md`: 수동 QA 체크리스트
 
+### 구조 다이어그램(개요)
+
+```
+          +-------------------+
+          |    app (Portal)   |
+          |  - Jinja routes   |
+          |  - Admin/Portal   |
+          +----------+--------+
+                     |
+                     v
+          +-------------------+
+          | payroll_api (API) |
+          |  - FastAPI router |
+          |  - /api/*         |
+          +----------+--------+
+                     |
+                     v
+          +-------------------+         +-------------------+
+          |    core/services  | <-----> | core/repositories |
+          |  - calc/export    |         |  - DB queries     |
+          |  - auth/locks     |         +-------------------+
+          +----------+--------+
+                     |
+                     v
+          +-------------------+
+          |   core/models     |
+          |  - SQLAlchemy ORM |
+          +-------------------+
+```
+
 ## 빠른 시작
 
 ```bash
