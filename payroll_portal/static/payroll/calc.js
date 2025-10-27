@@ -30,12 +30,13 @@
     try{
       const setMoney = global.setMoneyByNames || function(){};
       const amounts = (result && result.amounts) || {};
-      if(typeof amounts.national_pension === 'number'){ setMoney(tr, ['국민연금'], amounts.national_pension, true); }
-      if(typeof amounts.health_insurance === 'number'){ setMoney(tr, ['건강보험','건강보험료'], amounts.health_insurance, true); }
-      if(typeof amounts.long_term_care === 'number'){ setMoney(tr, ['장기요양보험','장기요양보험료','장기요양'], amounts.long_term_care, true); }
-      if(typeof amounts.employment_insurance === 'number'){ setMoney(tr, ['고용보험','고용보험료'], amounts.employment_insurance, true); }
-      if(typeof amounts.income_tax === 'number'){ setMoney(tr, ['소득세'], amounts.income_tax, true); }
-      if(typeof amounts.local_income_tax === 'number'){ setMoney(tr, ['지방소득세'], amounts.local_income_tax, true); }
+      // Emit input events to sync UI proxies in real-time (non-silent)
+      if(typeof amounts.national_pension === 'number'){ setMoney(tr, ['국민연금'], amounts.national_pension, false); }
+      if(typeof amounts.health_insurance === 'number'){ setMoney(tr, ['건강보험','건강보험료'], amounts.health_insurance, false); }
+      if(typeof amounts.long_term_care === 'number'){ setMoney(tr, ['장기요양보험','장기요양보험료','장기요양'], amounts.long_term_care, false); }
+      if(typeof amounts.employment_insurance === 'number'){ setMoney(tr, ['고용보험','고용보험료'], amounts.employment_insurance, false); }
+      if(typeof amounts.income_tax === 'number'){ setMoney(tr, ['소득세'], amounts.income_tax, false); }
+      if(typeof amounts.local_income_tax === 'number'){ setMoney(tr, ['지방소득세'], amounts.local_income_tax, false); }
       try{ if(typeof updateSplitSummary === 'function') updateSplitSummary(); }catch(_){ }
     }catch(_){ }
   }
@@ -150,17 +151,17 @@
     var ltc = (function(hiAmt){ var amt = hiAmt * ltc_rate; if(ltc_mode==='floor') return Math.floor(amt/ltc_to)*ltc_to; if(ltc_mode==='ceil') return Math.ceil(amt/ltc_to)*ltc_to; return Math.round(amt/ltc_to)*ltc_to; })(hi);
     var ei = calcBy(ei_cfg, Number(ei_cfg.rate||0.009), base_ei);
 
-    // Silent updates (배치 갱신)
-    setMoneyByNames(tr, ['국민연금'], np, true);
-    setMoneyByNames(tr, ['건강보험','건강보험료'], hi, true);
-    setMoneyByNames(tr, ['장기요양보험','장기요양보험료','장기요양'], ltc, true);
-    setMoneyByNames(tr, ['고용보험','고용보험료'], ei, true);
+    // Real-time updates: emit input events so split-view proxies sync immediately
+    setMoneyByNames(tr, ['국민연금'], np, false);
+    setMoneyByNames(tr, ['건강보험','건강보험료'], hi, false);
+    setMoneyByNames(tr, ['장기요양보험','장기요양보험료','장기요양'], ltc, false);
+    setMoneyByNames(tr, ['고용보험','고용보험료'], ei, false);
 
     try{
       var taxable = Math.max(0, Math.floor(defaultBase()||0));
       if(!taxable){
-        setMoneyByNames(tr, ['소득세'], 0, true);
-        setMoneyByNames(tr, ['지방소득세'], 0, true);
+        setMoneyByNames(tr, ['소득세'], 0, false);
+        setMoneyByNames(tr, ['지방소득세'], 0, false);
       }
       var payload = { year: YEAR, row: collectRowPayload(tr) };
       scheduleServerCalc(tr, payload);
