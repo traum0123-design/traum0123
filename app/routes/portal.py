@@ -285,12 +285,8 @@ def edit_payroll(request: Request, slug: str, year: int, month: int, db: Session
             rows = []
     if not rows:
         rows = [{}]
-    # Auto-prefill from previous month when the target month has no meaningful data yet
-    try:
-        has_data = bool(record and has_meaningful_data(record.rows_json or "[]"))
-    except Exception:
-        has_data = False
-    auto_prefill = not has_data
+    # Auto-prefill only when there is no record at all (first visit for the month)
+    auto_prefill = record is None
     group_map, alias_map, exempt_map, include_map = load_field_prefs(db, company)
     context = _base_context(request, company)
     context.update(
