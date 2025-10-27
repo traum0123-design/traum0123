@@ -373,7 +373,8 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
 def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
-    company = _require_company(request, slug, db)
+    # As admin, allow without requiring portal token
+    company = company_service.find_company_by_slug(db, slug) or _require_company(request, slug, db)
     if not company:
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
     record = (
@@ -401,7 +402,8 @@ def close_payroll(request: Request, slug: str, year: int, month: int, db: Sessio
 def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
-    company = _require_company(request, slug, db)
+    # As admin, allow without requiring portal token
+    company = company_service.find_company_by_slug(db, slug) or _require_company(request, slug, db)
     if not company:
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
     record = (
