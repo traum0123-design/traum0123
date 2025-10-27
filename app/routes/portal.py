@@ -285,6 +285,12 @@ def edit_payroll(request: Request, slug: str, year: int, month: int, db: Session
             rows = []
     if not rows:
         rows = [{}]
+    # Auto-prefill from previous month when the target month has no meaningful data yet
+    try:
+        has_data = bool(record and has_meaningful_data(record.rows_json or "[]"))
+    except Exception:
+        has_data = False
+    auto_prefill = not has_data
     group_map, alias_map, exempt_map, include_map = load_field_prefs(db, company)
     context = _base_context(request, company)
     context.update(
@@ -308,6 +314,7 @@ def edit_payroll(request: Request, slug: str, year: int, month: int, db: Session
             "portal_home_url": str(request.url_for("portal.home", slug=slug)),
             "save_url": str(request.url_for("portal.save_payroll", slug=slug, year=year, month=month)),
             "is_admin": _is_admin(request),
+            "auto_prefill": auto_prefill,
         }
     )
     response = templates.TemplateResponse("payroll_edit.html", context)

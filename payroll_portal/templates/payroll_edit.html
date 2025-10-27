@@ -414,6 +414,8 @@ function nsKey(name){ return STORAGE_NS + name; }
   const EXTRA_SET = new Set((EXTRA_FIELDS||[]).map(e=> e.name));
   const INS = {{ (insurance_config or {}) | tojson }};
   try{ window.INS = INS; }catch(_){ }
+  const AUTO_PREFILL = {{ 'true' if auto_prefill else 'false' }};
+  try{ window.AUTO_PREFILL = AUTO_PREFILL; }catch(_){ }
   function pad(n){ return String(n).padStart(2,'0'); }
   function monthStart(){ return `${YEAR}-${pad(MONTH)}-01`; }
   function daysInMonth(y, m){ return new Date(y, m, 0).getDate(); }
@@ -643,7 +645,11 @@ function nsKey(name){ return STORAGE_NS + name; }
       // 강제 첫 행 선택
       const firstListRow = document.querySelector('#empList tr');
       if(firstListRow){ selectEmp(0, firstListRow); }
-      alert(`전월 급여를 복사했습니다. 불러온 인원: ${nextRows.length} (전월 기준 퇴사자 ${filteredResigned}, 빈행 제외 ${filteredEmpty})`);
+      if(window.__AUTO_PREFILL__ === 1){
+        alert('전월 급여 기준으로 초기값을 반영했습니다.');
+      } else {
+        alert(`전월 급여를 복사했습니다. 불러온 인원: ${nextRows.length} (전월 기준 퇴사자 ${filteredResigned}, 빈행 제외 ${filteredEmpty})`);
+      }
     }catch(e){
       console.error(e); alert('전월 초안 생성 중 오류');
     }
@@ -1770,6 +1776,8 @@ function gridInputChanged(el){
   setViewMode('split');
   // Prime initial auto-calculation once UI is ready (non-blocking)
   try{ setTimeout(()=>{ computeAll(); }, 0); }catch(_){ }
+  // Auto prefill from previous month for a fresh target month
+  if(AUTO_PREFILL){ try{ window.__AUTO_PREFILL__ = 1; prefillFromPrev(); }catch(_){ } }
   const ACTION_HANDLERS = {
     openPasteModal: ()=> openPasteModal(),
     prefillFromPrev: ()=> prefillFromPrev(),
