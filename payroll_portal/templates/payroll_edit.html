@@ -501,9 +501,9 @@ function nsKey(name){ return STORAGE_NS + name; }
         // Build a normalized key map for robust fallback (공백/구두점 제거, 소문자)
         const norm = (k)=> String(k||'').replace(/\s+/g,'').replace(/[_.:,]/g,'').toLowerCase();
         const rmap = new Map(Object.keys(r||{}).map(k => [norm(k), r[k]]));
-        // include all rows regardless of 퇴사일 (요청에 따라 전월 전원 불러오기)
+        // Exclude employees resigned before this month start
         const leave = r['퇴사일'] ? parseDateFlex(r['퇴사일']) : null;
-        if(leave && leave < startThis){ filteredResigned++; }
+        if(leave && leave < startThis){ filteredResigned++; continue; }
         const nr = {};
         for(const f of FIELDS){
           const label = LABELS.get(f) || f;
@@ -541,23 +541,7 @@ function nsKey(name){ return STORAGE_NS + name; }
           nextRows.push(nr);
         }
       }
-      if(nextRows.length===0){
-        if(rows.length>0){
-          // Fallback: keep all rows; month meta fields will be aligned
-          const kept = rows.slice();
-          if(kept.length>0){
-            kept.forEach(r=>{
-              const nr={};
-              FIELDS.forEach(f=>{
-                const lbl = LABELS.get(f) || f;
-                nr[f] = (r[f] !== undefined) ? r[f] : r[lbl];
-              });
-              nr['월 시작일']=monthStart(); nr['월 말일']=monthEnd(); nr['월 총 일수']=daysInMonth(YEAR, MONTH);
-              nextRows.push(nr);
-            });
-          }
-        }
-      }
+      // If nothing to copy after filtering, show message below and exit
       if(nextRows.length===0){ alert('전월에서 가져올 사원이 없습니다. (퇴사제외 '+filteredResigned+', 빈행제외 '+filteredEmpty+')'); return; }
 
       // Write to UI
