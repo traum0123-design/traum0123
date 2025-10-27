@@ -1777,7 +1777,12 @@ function gridInputChanged(el){
   // Prime initial auto-calculation once UI is ready (non-blocking)
   try{ setTimeout(()=>{ computeAll(); }, 0); }catch(_){ }
   // Auto prefill from previous month for a fresh target month
-  if(AUTO_PREFILL){ try{ window.__AUTO_PREFILL__ = 1; prefillFromPrev(); }catch(_){ } }
+  if(AUTO_PREFILL){
+    try{
+      window.__AUTO_PREFILL__ = 1;
+      prefillFromPrev().then(()=>{ try{ if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__(); }catch(_){ } });
+    }catch(_){ }
+  }
   const ACTION_HANDLERS = {
     openPasteModal: ()=> openPasteModal(),
     prefillFromPrev: ()=> prefillFromPrev(),

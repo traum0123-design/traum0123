@@ -18,10 +18,12 @@
          href="{{ url_for('portal.edit_payroll', slug=slug, year=year, month=m.month) }}">
         <div class="m">{{ '%02d'|format(m.month) }}월</div>
         <div class="s">
-          {% if m.state == 'done' %}
-            완료
-          {% elif m.state == 'empty' %}
-            저장됨(내용없음)
+          {% if m.state == 'closed' %}
+            마감
+          {% elif m.state == 'saved' %}
+            저장됨
+          {% elif m.state == 'none' %}
+            미입력
           {% else %}
             미입력
           {% endif %}
@@ -31,8 +33,8 @@
       {% endfor %}
     </div>
     <div class="legend">
-      <span class="badge b-done">완료</span>
-      <span class="badge b-empty">저장됨(내용없음)</span>
+      <span class="badge b-closed">마감</span>
+      <span class="badge b-saved">저장됨</span>
       <span class="badge b-none">미입력</span>
       <span class="badge b-current">현재월</span>
     </div>
@@ -47,14 +49,14 @@
   .month-btn .m{ font-weight:700; font-size:18px; }
   .month-btn .s{ font-size:12px; opacity:.85; }
   .month-btn .u{ font-size:11px; opacity:.6; margin-top:4px; }
-  .month-btn.done{ background:#ecfdf5; border-color:#10b98155; }
-  .month-btn.empty{ background:#f8fafc; border-color:#94a3b844; }
+  .month-btn.closed{ background:#ecfdf5; border-color:#10b98155; }
+  .month-btn.saved{ background:#f8fafc; border-color:#94a3b844; }
   .month-btn.none{ background:#fff; }
   .month-btn.current{ outline:2px solid #2563eb; }
   .legend{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
   .badge{ display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border); }
-  .badge.b-done{ background:#ecfdf5; border-color:#10b98155; }
-  .badge.b-empty{ background:#f8fafc; border-color:#94a3b844; }
+  .badge.b-closed{ background:#ecfdf5; border-color:#10b98155; }
+  .badge.b-saved{ background:#f8fafc; border-color:#94a3b844; }
   .badge.b-none{ background:#fff; }
   .badge.b-current{ background:#e0edff; border-color:#2563eb55; }
 </style>

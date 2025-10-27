@@ -232,7 +232,7 @@ def portal_home(request: Request, slug: str, db: Session = Depends(get_db)):
     )
     status = {}
     for rec in records:
-        state = "done" if has_meaningful_data(rec.rows_json) else "empty"
+        state = "closed" if bool(getattr(rec, "is_closed", False)) else ("saved" if has_meaningful_data(rec.rows_json) else "none")
         status[int(rec.month)] = {
             "state": state,
             "updated_at": rec.updated_at.strftime("%Y-%m-%d %H:%M:%S") if rec.updated_at else "",
