@@ -1706,7 +1706,13 @@ function gridInputChanged(el){
       const next = document.getElementById('nextAfterSave');
       if(next) next.value = targetUrl || 'home';
       if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__();
-      form.submit();
+      // Trigger submit handler so we use fetch + redirect (avoid full-page JSON)
+      if(typeof form.requestSubmit === 'function'){
+        form.requestSubmit();
+      } else {
+        const ev = new Event('submit', { bubbles: true, cancelable: true });
+        form.dispatchEvent(ev);
+      }
     }catch(e){
       console.error('saveAndExit failed', e);
       if(targetUrl){ location.href = targetUrl; }
