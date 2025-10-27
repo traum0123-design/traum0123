@@ -1618,8 +1618,13 @@ function gridInputChanged(el){
           if(window.__PAYROLL_CLEAR_DIRTY__) window.__PAYROLL_CLEAR_DIRTY__();
           const nextField = form.querySelector('#nextAfterSave');
           if(nextField) nextField.value = '';
-          if(String(nextTarget).trim() === 'home'){
-            window.location.href = PORTAL_HOME_URL;
+          const targetAfter = String(nextTarget||'').trim();
+          if(targetAfter){
+            if(targetAfter === 'home'){
+              window.location.href = PORTAL_HOME_URL;
+            } else {
+              window.location.href = targetAfter;
+            }
             return;
           }
           if(window.PayrollFlash){ PayrollFlash('success', '저장되었습니다.'); }
