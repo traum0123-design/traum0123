@@ -25,10 +25,21 @@
     }catch(e){ return {}; }
   }
   function saveExemptOverrides(m){ try{ localStorage.setItem(nsKey('payroll_exempt_overrides_v1'), JSON.stringify(m||{})); }catch(e){} }
+
+  // Proration include map: which earning fields should be prorated
+  function loadProrateIncludeMap(){
+    try{
+      var raw = JSON.parse(localStorage.getItem(nsKey('payroll_prorate_include_v1')) || '{}');
+      return (raw && typeof raw === 'object') ? raw : {};
+    }catch(e){ return {}; }
+  }
+  function saveProrateIncludeMap(m){ try{ localStorage.setItem(nsKey('payroll_prorate_include_v1'), JSON.stringify(m||{})); }catch(e){} }
   global.PayrollState = global.PayrollState || {
     loadInsIncludeMap: loadInsIncludeMap,
     saveInsIncludeMap: saveInsIncludeMap,
     loadExemptOverrides: loadExemptOverrides,
-    saveExemptOverrides: saveExemptOverrides
+    saveExemptOverrides: saveExemptOverrides,
+    loadProrateIncludeMap: loadProrateIncludeMap,
+    saveProrateIncludeMap: saveProrateIncludeMap
   };
 })(window);

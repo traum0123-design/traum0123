@@ -149,3 +149,12 @@ class FieldGroupConfigRequest(BaseModel):
 
 class FieldGroupConfigResponse(BaseModel):
     ok: bool = True
+
+
+class FieldProrateConfigResponse(BaseModel):
+    ok: bool = True
+    prorate: dict[str, bool] = Field(default_factory=dict)
+
+
+class FieldProrateConfigRequest(BaseModel):
+    prorate: dict[str, bool] = Field(default_factory=dict)

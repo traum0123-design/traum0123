@@ -57,6 +57,8 @@ from .schemas import (
     FieldExemptEntry,
     FieldGroupConfigRequest,
     FieldGroupConfigResponse,
+    FieldProrateConfigRequest,
+    FieldProrateConfigResponse,
     FieldInfo,
     FieldDeleteRequest,
     HealthResponse,
@@ -655,13 +657,17 @@ async def api_save_payroll(
 # ------------------------------
 
 def _load_include_map(db: Session, company: Company) -> dict[str, dict[str, bool]]:
-    rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
     inc: dict[str, dict[str, bool]] = {"nhis": {}, "ei": {}}
-    for p in rows:
-        if bool(getattr(p, "ins_nhis", False)):
-            inc["nhis"][p.field] = True
-        if bool(getattr(p, "ins_ei", False)):
-            inc["ei"][p.field] = True
+    try:
+        rows = db.query(FieldPref.field, FieldPref.ins_nhis, FieldPref.ins_ei).filter(FieldPref.company_id == company.id).all()
+        for field, ins_nhis, ins_ei in rows:
+            if bool(ins_nhis):
+                inc["nhis"][field] = True
+            if bool(ins_ei):
+                inc["ei"][field] = True
+    except Exception:
+        # Backward compatible fallback
+        pass
     return inc
 
 
@@ -739,11 +745,15 @@ def api_get_exempt_config(
     portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
 ):
     company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
-    rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
     ex: dict[str, FieldExemptEntry] = {}
-    for p in rows:
-        if bool(getattr(p, "exempt_enabled", False)) or int(getattr(p, "exempt_limit", 0) or 0) > 0:
-            ex[p.field] = FieldExemptEntry(enabled=bool(p.exempt_enabled), limit=int(p.exempt_limit or 0))
+    try:
+        rows = db.query(FieldPref.field, FieldPref.exempt_enabled, FieldPref.exempt_limit).filter(FieldPref.company_id == company.id).all()
+        for field, enabled, limit in rows:
+            if bool(enabled) or int(limit or 0) > 0:
+                ex[field] = FieldExemptEntry(enabled=bool(enabled), limit=int(limit or 0))
+    except Exception:
+        # Backward compatible fallback when schema differs
+        pass
     return FieldExemptConfigResponse(exempt=ex, base=_base_exemptions_from_env())
 
 
@@ -870,6 +880,78 @@ def api_save_group_config(
     except Exception:
         pass
     return FieldGroupConfigResponse()
+
+
+# ------------------------------
+# Prorate config (일할계산 적용 항목)
+# ------------------------------
+
+def _load_prorate_map(db: Session, company: Company) -> dict[str, bool]:
+    try:
+        rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
+        out: dict[str, bool] = {}
+        for p in rows:
+            if bool(getattr(p, "prorate", False)):
+                out[p.field] = True
+        return out
+    except Exception:
+        # Backward-compat: if column does not exist yet, return empty map
+        return {}
+
+
+@router.get("/api/portal/{slug}/fields/prorate-config", response_model=FieldProrateConfigResponse)
+@router.get("/portal/{slug}/fields/prorate-config", response_model=FieldProrateConfigResponse)
+def api_get_prorate_config(
+    slug: str,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
+    return FieldProrateConfigResponse(prorate=_load_prorate_map(db, company))
+
+
+@router.post("/api/portal/{slug}/fields/prorate-config", response_model=SimpleOkResponse)
+@router.post("/portal/{slug}/fields/prorate-config", response_model=SimpleOkResponse)
+def api_save_prorate_config(
+    slug: str,
+    payload: FieldProrateConfigRequest,
+    db: Session = Depends(get_db),
+    authorization: Optional[str] = Header(None),
+    x_admin_token: Optional[str] = Header(None),
+    admin_cookie: Optional[str] = Cookie(None, alias=ADMIN_COOKIE_NAME),
+    x_api_token: Optional[str] = Header(None),
+    token: Optional[str] = None,
+    portal_cookie: Optional[str] = Cookie(None, alias=PORTAL_COOKIE_NAME),
+):
+    # Require company context for slug validation
+    company = require_company(slug, db, authorization, x_api_token, token, portal_cookie)
+    # Admin-only mutation
+    require_admin(authorization, x_admin_token, None, admin_cookie)
+    m = payload.prorate or {}
+    if not isinstance(m, dict):
+        raise HTTPException(status_code=400, detail="invalid payload")
+    keys = {k for k, v in m.items() if v}
+    try:
+        # Upsert selected
+        for key in keys:
+            pref = db.query(FieldPref).filter(FieldPref.company_id == company.id, FieldPref.field == key).first()
+            if not pref:
+                pref = FieldPref(company_id=company.id, field=key)
+                db.add(pref)
+            pref.prorate = True
+        # Reset others
+        rows = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
+        for p in rows:
+            if p.field not in keys:
+                p.prorate = False
+        db.commit()
+        return SimpleOkResponse()
+    except Exception as e:
+        # If migration not applied, inform client clearly
+        raise HTTPException(status_code=400, detail="prorate config unavailable; apply DB migration")
 
 
 # ------------------------------

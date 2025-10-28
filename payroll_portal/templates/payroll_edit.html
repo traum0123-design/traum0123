@@ -38,6 +38,26 @@
         </form>
       {% endif %}
     {% endif %}
+</div>
+</div>
+
+<!-- Prorate Config Modal (일할계산 관리) -->
+<div id="prorateConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:66; align-items:center; justify-content:center;">
+  <div class="card" style="max-width:700px; width:90%;">
+    <h2>일할계산 관리</h2>
+    <p class="muted">어떤 급여 항목에 일할계산을 적용할지 선택하세요. 기본값: 기본급, 식대, 자가운전보조금.</p>
+    <div class="modal-scroll" style="max-height: calc(100vh - 260px); overflow:auto; border:1px solid var(--border); border-radius:10px; padding:8px; margin:8px 0; background:#fff;">
+      <table class="table" style="width:100%;">
+        <thead>
+          <tr><th>항목</th><th style="width:120px;">일할 적용</th></tr>
+        </thead>
+        <tbody id="prorateConfigBody"></tbody>
+      </table>
+    </div>
+    <div class="modal-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+      <button type="button" data-action="closeProrateConfig">취소</button>
+      <button type="button" class="primary" data-action="saveProrateConfig">저장</button>
+    </div>
   </div>
 </div>
 
@@ -121,7 +141,7 @@
 
     <!-- Right: deductions + summary -->
     <div class="panel">
-      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button></div>
+      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
       <div class="panel-body">
         <table id="dedTable"></table>
         <div class="summary">
@@ -505,21 +525,46 @@ function nsKey(name){ return STORAGE_NS + name; }
   function applyProrationForAll(){
     const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
     const { earnings } = classify();
+    const defaultPr = new Set(['기본급','식대','자가운전보조금']);
+    const prMap = (function(){ try{ return (window.__PRORATE_MAP__ && typeof window.__PRORATE_MAP__==='object') ? window.__PRORATE_MAP__ : ((window.PayrollState && window.PayrollState.loadProrateIncludeMap && window.PayrollState.loadProrateIncludeMap()) || {}); }catch(_){ return {}; } })();
+    const hasCustom = prMap && Object.keys(prMap).length > 0;
+    const safeEscape = (s)=>{ try{ return (window.CSS && CSS.escape) ? CSS.escape(s) : String(s).replace(/[\[\]\(\).#:+~>\s]/g,'\\$&'); }catch(_){ return s; } };
     rows.forEach((tr)=>{
+      // Ensure booleans are up to date for this row
+      try{ computeBooleans(tr); }catch(_){ }
       const pr = computeProrationForRow(tr);
       if(!pr || !pr.total || !pr.prorated) return;
       const ratio = pr.total > 0 ? (pr.days / pr.total) : 0;
       (earnings||[]).forEach(([field,label,typ])=>{
         // 상여 포함 라벨은 제외
         if(String(label||'').indexOf('상여') !== -1) return;
-        const input = tr.querySelector(`[name$='[${CSS.escape(field)}]']`);
+        // 필드 선택: 커스텀 설정이 있으면 그에 따르고, 없으면 기본(기본급/식대/자가운전보조금)
+        const key = field || label;
+        const allowed = hasCustom ? !!prMap[key] || !!prMap[String(label||'')] : (defaultPr.has(String(label||'')) || defaultPr.has(String(field||'')));
+        if(!allowed) return;
+        const input = tr.querySelector(`[name$='[${safeEscape(field)}]']`);
         if(!input) return;
         const origKey = 'orig';
-        const raw = (input.dataset[origKey] !== undefined) ? input.dataset[origKey] : input.value;
-        if(input.dataset[origKey] === undefined){ input.dataset[origKey] = raw; }
-        const base = Number((String(raw||'').replace(/,/g,'').match(/-?\d+(?:\.\d+)?/)||['0'])[0]);
+        const lastKey = 'lastPr';
+        // Parse helpers
+        const parseNum = (v)=>{ const t = String(v||'').replace(/,/g,'').trim(); const m = t.match(/-?\d+(?:\.\d+)?/); return m? Number(m[0]) : NaN; };
+        const cur = parseNum(input.value);
+        const orig = parseNum(input.dataset[origKey]);
+        const last = parseNum(input.dataset[lastKey]);
+        let base;
+        if(isFinite(cur) && cur > 0){
+          // If current value is user-edited (differs from last proration), treat it as new base
+          if(!(isFinite(last) && cur === last)){
+            input.dataset[origKey] = String(cur);
+          }
+          base = isFinite(orig) ? parseNum(input.dataset[origKey]) : cur;
+        } else {
+          // Current is empty/zero -> do not resurrect from old base
+          return;
+        }
         const val = Math.trunc(base * ratio);
         input.value = String(val);
+        input.dataset[lastKey] = String(val);
         try{ input.dispatchEvent(new Event('input', { bubbles:true })); }catch(_){ }
       });
     });
@@ -1718,6 +1763,11 @@ function gridInputChanged(el){
         try{ computeAll(); }catch(_){ }
       }
     }catch(_){ /* ignore fetch error; fallback to local */ }
+    // Load prorate config from server and cache for usage
+    try{
+      const r2 = await fetch(`/api/portal/${SLUG}/fields/prorate-config`);
+      const j2 = await r2.json(); if(r2.ok && j2 && j2.ok){ window.__PRORATE_MAP__ = j2.prorate || {}; }
+    }catch(_){ }
   })();
   const _search = document.getElementById('rowSearch'); if(_search){ _search.addEventListener('input', applyRowFilter); }
   // Readonly lock when closed
@@ -1994,6 +2044,8 @@ function gridInputChanged(el){
     toggleBasicInfo: ()=> toggleBasicInfo(),
     openCalcConfig: ()=> openCalcConfig(),
     openExemptConfig: ()=> openExemptConfig(),
+    openProrateConfig: ()=> openProrateConfig(),
+    openProrationModal: ()=> openProrationModal('manual'),
     rowCopy: (el)=> rowCopy(el),
     rowFillMonth: (el)=> rowFillMonth(el),
     rowCompute: (el)=> rowCompute(el),
@@ -2011,8 +2063,15 @@ function gridInputChanged(el){
     saveGroupConfig: ()=> saveGroupConfig(),
     closeCalcConfig: ()=> closeCalcConfig(),
     saveCalcConfig: ()=> saveCalcConfig(),
+    // Proration modal/button actions
+    closeProrationModal: ()=> closeProrationModal(),
+    applyProrationManual: ()=> applyProrationManual(),
+    applyProrationAndSave: ()=> applyProrationAndSave(),
+    saveAnyway: ()=> saveAnyway(),
     closeExemptConfig: ()=> closeExemptConfig(),
     saveExemptConfig: ()=> saveExemptConfig(),
+    closeProrateConfig: ()=> closeProrateConfig(),
+    saveProrateConfig: ()=> saveProrateConfig(),
   };
 
   document.addEventListener('click', (event)=>{
@@ -2050,11 +2109,11 @@ function gridInputChanged(el){
     <div style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
       <label class="muted" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="prNoAsk"> 이번 세션에서 다시 묻지 않기</label>
       <div style="display:flex; gap:8px; justify-content:flex-end;">
-        <button type="button" data-only="manual" onclick="closeProrationModal()">닫기</button>
-        <button type="button" class="primary" data-only="manual" onclick="applyProrationManual()">적용</button>
-        <button type="button" data-only="guard" onclick="closeProrationModal()">취소</button>
-        <button type="button" data-only="guard" onclick="saveAnyway()">그대로 저장</button>
-        <button type="button" class="primary" data-only="guard" onclick="applyProrationAndSave()">적용하고 저장</button>
+        <button type="button" data-only="manual" data-action="closeProrationModal">닫기</button>
+        <button type="button" class="primary" data-only="manual" data-action="applyProrationManual">적용</button>
+        <button type="button" data-only="guard" data-action="closeProrationModal">취소</button>
+        <button type="button" data-only="guard" data-action="saveAnyway">그대로 저장</button>
+        <button type="button" class="primary" data-only="guard" data-action="applyProrationAndSave">적용하고 저장</button>
       </div>
     </div>
   </div>
@@ -2427,6 +2486,46 @@ function gridInputChanged(el){
     saveExemptOverrides(ov);
     try{ fetch(`/api/portal/${SLUG}/fields/exempt-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ exempt: ov }) }); }catch(_){ }
     try{ computeAll(); }catch(_){ }
+  }
+
+  // ---------------- 일할계산 관리 ----------------
+  function openProrateConfig(){ if(!IS_ADMIN) return; buildProrateConfig(); document.getElementById('prorateConfigModal').style.display='flex'; }
+  function closeProrateConfig(){ document.getElementById('prorateConfigModal').style.display='none'; }
+  function loadProrateIncludeMap(){ try{ return (window.PayrollState && window.PayrollState.loadProrateIncludeMap && window.PayrollState.loadProrateIncludeMap()) || {}; }catch(_){ return {}; } }
+  function saveProrateIncludeMap(m){ try{ if(window.PayrollState && window.PayrollState.saveProrateIncludeMap) window.PayrollState.saveProrateIncludeMap(m); }catch(_){ } }
+  async function buildProrateConfig(){
+    const body = document.getElementById('prorateConfigBody'); if(!body) return; body.innerHTML='';
+    const { earnings } = classify();
+    // Load server map; fallback to local or defaults if unavailable
+    let cur = {};
+    try{
+      const res = await fetch(`/api/portal/${SLUG}/fields/prorate-config`);
+      const j = await res.json();
+      if(res.ok && j && j.ok && j.prorate){ cur = j.prorate; window.__PRORATE_MAP__ = cur; }
+    }catch(_){ cur = loadProrateIncludeMap(); }
+    const hasCustom = cur && Object.keys(cur||{}).length>0;
+    const defaults = new Set(['기본급','식대','자가운전보조금']);
+    (earnings||[]).forEach(([field,label,typ])=>{
+      if(typ!=='number') return;
+      const key = field || label;
+      const checked = hasCustom ? !!cur[key] || !!cur[String(label||'')] : (defaults.has(String(label||'')) || defaults.has(String(field||'')));
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td class="col-name">${label}</td>
+        <td class="radio-cell"><label class="radio-wrap"><input class="as-radio" type="checkbox" data-pr="1" data-field="${field}" ${checked?'checked':''}></label></td>
+      `;
+      body.appendChild(tr);
+    });
+  }
+  function saveProrateConfig(){
+    const m = {};
+    document.querySelectorAll('#prorateConfigBody input[type="checkbox"][data-pr="1"]').forEach(cb=>{ if(cb.checked){ m[cb.dataset.field] = true; }});
+    // Persist to server (admin only); also cache locally to reflect immediately
+    try{
+      fetch(`/api/portal/${SLUG}/fields/prorate-config`, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ prorate: m }) });
+      window.__PRORATE_MAP__ = m; saveProrateIncludeMap(m);
+    }catch(_){ }
+    closeProrateConfig();
   }
 </script>
 {% endblock %}

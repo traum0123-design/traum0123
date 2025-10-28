@@ -6,6 +6,7 @@ import os
 from typing import Dict, Iterable, List, Tuple
 
 from sqlalchemy.orm import Session
+from sqlalchemy.orm import defer
 
 from core.models import Company, ExtraField, FieldPref, MonthlyPayroll, WithholdingCell
 from core.schema import (
@@ -137,8 +138,17 @@ def _sorted_unique_extras(session: Session, company: Company) -> List[ExtraField
 
 
 def load_field_prefs(session: Session, company: Company):
-    prefs = (
-        session.query(FieldPref)
+    # Query only columns we actually need to avoid touching newly added columns in older DBs
+    rows = (
+        session.query(
+            FieldPref.field,
+            FieldPref.group,
+            FieldPref.alias,
+            FieldPref.exempt_enabled,
+            FieldPref.exempt_limit,
+            FieldPref.ins_nhis,
+            FieldPref.ins_ei,
+        )
         .filter(FieldPref.company_id == company.id)
         .all()
     )
@@ -157,28 +167,28 @@ def load_field_prefs(session: Session, company: Company):
             continue
         exempt_map[name] = {"enabled": True, "limit": limit_val}
     include_map: Dict[str, dict] = {"nhis": {}, "ei": {}}
-    for pref in prefs:
-        if pref.group and pref.group != "none":
-            group_map[pref.field] = pref.group
-        if pref.alias:
-            alias_map[pref.field] = pref.alias
-        limit_raw = getattr(pref, "exempt_limit", 0)
+    for field, grp, alias, ex_enabled, ex_limit, ins_nhis, ins_ei in rows:
+        if grp and grp != "none":
+            group_map[field] = grp
+        if alias:
+            alias_map[field] = alias
+        limit_raw = ex_limit or 0
         try:
             limit_val = int(limit_raw or 0)
         except Exception:
             limit_val = 0
-        enabled = bool(getattr(pref, "exempt_enabled", False) and limit_val > 0)
-        existing = exempt_map.get(pref.field)
+        enabled = bool(ex_enabled and limit_val > 0)
+        existing = exempt_map.get(field)
         if not enabled and limit_val <= 0 and existing:
             # Preserve configured base exemptions unless an explicit override exists.
             pass
         else:
             # Always send back the entry even if disabled so that clients can honour explicit override
-            exempt_map[pref.field] = {"enabled": enabled, "limit": limit_val}
-        if getattr(pref, "ins_nhis", False):
-            include_map["nhis"][pref.field] = True
-        if getattr(pref, "ins_ei", False):
-            include_map["ei"][pref.field] = True
+            exempt_map[field] = {"enabled": enabled, "limit": limit_val}
+        if ins_nhis:
+            include_map["nhis"][field] = True
+        if ins_ei:
+            include_map["ei"][field] = True
     return group_map, alias_map, exempt_map, include_map
 
 

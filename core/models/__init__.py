@@ -72,6 +72,8 @@ class FieldPref(Base):
     exempt_limit: Mapped[int] = mapped_column(Integer, default=0)
     ins_nhis: Mapped[bool] = mapped_column(Boolean, default=False)
     ins_ei: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Whether this earning field should be prorated (일할계산 적용)
+    prorate: Mapped[bool] = mapped_column(Boolean, default=False)
     updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
 
     __table_args__ = (
