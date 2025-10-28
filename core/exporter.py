@@ -12,7 +12,304 @@ from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 from .schema import DEFAULT_COLUMNS  # re-exported default columns for consumers
 
 
-__all__ = ["build_salesmap_workbook", "DEFAULT_COLUMNS"]
+__all__ = [
+    "build_salesmap_workbook",
+    "build_salesmap_workbook_stream",
+    "DEFAULT_COLUMNS",
+]
+
+
+def _compute_field_groups(
+    rows: list[dict],
+    all_columns: Iterable[tuple[str, str, str]],
+    group_prefs: dict[str, str] | None = None,
+    alias_prefs: dict[str, str] | None = None,
+) -> tuple[list[tuple[str, str]], list[tuple[str, str]]]:
+    """Derive earning/deduction field groups and display labels.
+
+    Mirrors the grouping heuristic used by build_salesmap_workbook so that
+    the streaming builder produces an identical layout.
+    """
+    group_prefs = group_prefs or {}
+    alias_prefs = alias_prefs or {}
+
+    EXCLUDED_META = {
+        "사원코드",
+        "사원명",
+        "부서",
+        "직급",
+        "입사일",
+        "퇴사일",
+        "휴직일",
+        "휴직종료일",
+        "월 시작일",
+        "월 말일",
+        "월 총 일수",
+        "근무일수",
+    }
+
+    PREFERRED_EARN_ORDER = [
+        "기본급",
+        "월급여",
+        "상여",
+        "식대",
+        "자가운전보조금",
+        "시간외수당",
+        "연장근로수당",
+        "현장수당",
+        "직급수당",
+        "연차수당",
+        "기타수당",
+    ]
+    PREFERRED_DEDUCT_ORDER = [
+        "국민연금",
+        "건강보험",
+        "고용보험",
+        "장기요양보험료",
+        "소득세",
+        "지방소득세",
+        "각종상환공제",
+        "학자금상환액",
+        "건강보험정산",
+        "장기요양보험정산",
+        "고용보험정산",
+        "고용보험 연말정산",
+        "건강보험 연말정산",
+        "요양보험 연말정산",
+    ]
+
+    def classify_group(label: str) -> str:
+        name = str(label)
+        earn_kw = ["수당", "식대", "보조", "상여", "기본급", "월급여"]
+        deduct_kw = ["공제", "세", "연금", "보험", "상환", "정산"]
+        if any(k in name for k in earn_kw):
+            return "earn"
+        if any(k in name for k in deduct_kw):
+            return "deduct"
+        return "earn"
+
+    def total_by_field(rows_list: list[dict], field: str) -> int:
+        s = 0
+        for r in rows_list:
+            v = r.get(field, 0)
+            try:
+                if v in (None, ""):
+                    continue
+                s += int(float(str(v).replace(",", "").strip()))
+            except Exception:
+                pass
+        return s
+
+    def sort_by_preference(items: list[tuple[str, str]], preferred: list[str]):
+        pref_index = {name: i for i, name in enumerate(preferred)}
+        return sorted(items, key=lambda x: (pref_index.get(x[1], 10_000), x[1]))
+
+    def _normalize_label_text(label: str) -> str:
+        s = (label or "").strip()
+        return "".join(s.split())
+
+    earn_fields: list[tuple[str, str]] = []
+    deduct_fields: list[tuple[str, str]] = []
+    seen_earn: set[str] = set()
+    seen_deduct: set[str] = set()
+    for field, label, typ in all_columns:
+        if typ != "number":
+            continue
+        if field in EXCLUDED_META or label in EXCLUDED_META:
+            continue
+        disp_label = (alias_prefs.get(field) or label)
+        pref_grp = (group_prefs.get(field) or "").strip()
+        if pref_grp == "none":
+            continue
+        if pref_grp in ("earn", "deduct"):
+            key = _normalize_label_text(disp_label or label)
+            if pref_grp == "earn":
+                if key in seen_earn:
+                    continue
+                seen_earn.add(key)
+                earn_fields.append((field, disp_label))
+            else:
+                if key in seen_deduct:
+                    continue
+                seen_deduct.add(key)
+                deduct_fields.append((field, disp_label))
+            continue
+        # heuristic fallback
+        grp = classify_group(disp_label)
+        if total_by_field(rows, field) == 0:
+            continue
+        key = _normalize_label_text(disp_label or label)
+        if grp == "earn":
+            if key in seen_earn:
+                continue
+            seen_earn.add(key)
+            earn_fields.append((field, disp_label))
+        else:
+            if key in seen_deduct:
+                continue
+            seen_deduct.add(key)
+            deduct_fields.append((field, disp_label))
+
+    earn_fields = sort_by_preference(earn_fields, PREFERRED_EARN_ORDER)
+    deduct_fields = sort_by_preference(deduct_fields, PREFERRED_DEDUCT_ORDER)
+    return earn_fields, deduct_fields
+
+
+def build_salesmap_workbook_stream(
+    *,
+    company_slug: str,
+    year: int,
+    month: int,
+    rows: list[dict],
+    all_columns: Iterable[tuple[str, str, str]],
+    group_prefs: dict[str, str] | None = None,
+    alias_prefs: dict[str, str] | None = None,
+) -> BytesIO:
+    """Memory-friendly streaming builder using openpyxl write_only mode.
+
+    Layout and values are kept identical to build_salesmap_workbook.
+    """
+    earn_fields, deduct_fields = _compute_field_groups(rows, all_columns, group_prefs, alias_prefs)
+
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="Sheet1")
+
+    left_fixed = ["사원코드", "사원명", "부서", "직급"]
+    earn_labels = [lbl for _, lbl in earn_fields]
+    deduct_labels = [lbl for _, lbl in deduct_fields]
+
+    # Header rows
+    row1 = (
+        left_fixed[:]
+        + ([] if not earn_labels else ["수당"] + [""] * (len(earn_labels) - 1))
+        + ["지급액계"]
+        + ([] if not deduct_labels else [""] * (len(deduct_labels) - 1) + ["공제"])
+        + ["공제액계", "차인지급액"]
+    )
+    row2 = left_fixed[:] + earn_labels + ["지급액계"] + deduct_labels + ["공제액계", "차인지급액"]
+    ws.append(row1)
+    ws.append(row2)
+
+    # Helpers copied from non-streaming builder
+    import calendar
+    import datetime as dt
+
+    def parse_date_flex(val):
+        if not val:
+            return None
+        if isinstance(val, dt.date):
+            return val
+        s = str(val).strip()
+        try:
+            return dt.date.fromisoformat(s)
+        except Exception:
+            pass
+        import re
+
+        parts = [p for p in re.split(r"[^0-9]", s) if p]
+        if len(parts) >= 3:
+            try:
+                y, m, d = map(int, parts[:3])
+                return dt.date(y, m, d)
+            except Exception:
+                return None
+        return None
+
+    def month_range_for_row(r: dict):
+        s_val = r.get("월 시작일")
+        e_val = r.get("월 말일")
+        s_date = parse_date_flex(s_val)
+        e_date = parse_date_flex(e_val)
+        if not s_date or not e_date or s_date > e_date:
+            first = dt.date(year, month, 1)
+            last = dt.date(year, month, calendar.monthrange(year, month)[1])
+            return first, last
+        return s_date, e_date
+
+    def overlap_days(a1: dt.date, a2: dt.date, b1: dt.date, b2: dt.date) -> int:
+        s = max(a1, b1)
+        e = min(a2, b2)
+        if e < s:
+            return 0
+        return (e - s).days + 1
+
+    def proration_factor(r: dict) -> tuple[int, int]:
+        ms, me = month_range_for_row(r)
+        total = (me - ms).days + 1
+        join = parse_date_flex(r.get("입사일"))
+        leave = parse_date_flex(r.get("퇴사일"))
+        act_s = max(ms, join) if join else ms
+        act_e = min(me, leave) if leave else me
+        if act_e < act_s:
+            return 0, total
+        days = (act_e - act_s).days + 1
+        leave_s = parse_date_flex(r.get("휴직일"))
+        leave_e = parse_date_flex(r.get("휴직종료일")) or me if leave_s else None
+        if leave_s:
+            d = overlap_days(act_s, act_e, max(ms, leave_s), min(me, leave_e))
+            days = max(0, days - d)
+        return days, total
+
+    def get_num(row: dict, field: str) -> int:
+        try:
+            val = row.get(field, 0)
+            if val in (None, ""):
+                return 0
+            return int(float(str(val).replace(",", "").strip()))
+        except Exception:
+            return 0
+
+    # Track totals for summary row
+    earn_sums = [0 for _ in earn_labels]
+    deduct_sums = [0 for _ in deduct_labels]
+    allow_total_sum = 0
+    deduct_total_sum = 0
+
+    for r in rows:
+        lvals = [
+            r.get("사원코드", ""),
+            r.get("사원명", ""),
+            r.get("부서", ""),
+            r.get("직급", ""),
+        ]
+        pay_days, tot_days = proration_factor(r)
+        factor = (pay_days / tot_days) if tot_days > 0 else 0.0
+        earn_vals = []
+        for idx, (f, lbl) in enumerate(earn_fields):
+            base = get_num(r, f)
+            if "상여" in str(lbl):
+                val = base
+            else:
+                val = int(base * factor)
+            earn_vals.append(val)
+            earn_sums[idx] += val
+        earn_total = sum(earn_vals)
+        allow_total_sum += earn_total
+        deduct_vals = []
+        for idx, (f, _lbl) in enumerate(deduct_fields):
+            v = get_num(r, f)
+            deduct_vals.append(v)
+            deduct_sums[idx] += v
+        deduct_total = sum(deduct_vals)
+        deduct_total_sum += deduct_total
+        net = earn_total - deduct_total
+        ws.append(lvals + earn_vals + [earn_total] + deduct_vals + [deduct_total, net])
+
+    # Totals row (with a blank spacer row like original builder)
+    if rows:
+        ws.append([])
+        values: list[int | str] = ["합계", "", "", ""]
+        values.extend(earn_sums)
+        values.append(allow_total_sum)
+        values.extend(deduct_sums)
+        values.append(deduct_total_sum)
+        values.append(allow_total_sum - deduct_total_sum)
+        ws.append(values)
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio
 
 
 def _normalize_label_text(label: str) -> str:

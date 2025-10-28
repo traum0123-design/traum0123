@@ -21,7 +21,9 @@ from .portal import (
     _apply_template_security,
     _base_context,
     _is_admin,
+    _verify_csrf,
 )
+from payroll_portal.services.rate_limit import limiter, admin_login_key
 
 router = APIRouter(prefix="/admin", tags=["admin"])
 
@@ -40,7 +42,17 @@ def login_page(request: Request):
 
 @router.post("/login", name="admin.login_post")
 def login_action(request: Request, password: str = Form(...), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
+    rl = limiter()
+    key = admin_login_key(request)
     if not company_service.verify_admin_password(password):
+        # count attempts and possibly block for a minute
+        try:
+            exceeded = rl.too_many_attempts(key, 60, 10)
+        except Exception:
+            exceeded = True
+        if exceeded:
+            return RedirectResponse(url="/admin/login?error=too_many_attempts", status_code=303)
         return RedirectResponse(url="/admin/login?error=1", status_code=303)
     token = issue_admin_token()
     response = RedirectResponse(url="/admin/", status_code=303)
@@ -93,6 +105,7 @@ def admin_index(request: Request, db: Session = Depends(get_db)):
 
 @router.post("/company/new", name="admin.company_new")
 def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     name = (name or "").strip()
@@ -125,6 +138,7 @@ def company_detail(request: Request, company_id: int, db: Session = Depends(get_
 
 @router.post("/company/{company_id}/reset-code", name="admin.company_reset_code")
 def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)

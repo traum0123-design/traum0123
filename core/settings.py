@@ -17,6 +17,10 @@ class PayrollSettings(BaseSettings):
     admin_rate_limit_backend: str = Field("auto", alias="ADMIN_RATE_LIMIT_BACKEND")
     admin_rate_limit_redis_url: Optional[str] = Field(None, alias="ADMIN_RATE_LIMIT_REDIS_URL")
     enforce_alembic_migrations: bool = Field(False, alias="PAYROLL_ENFORCE_ALEMBIC")
+    # Build/meta info
+    app_version: str = Field("dev", alias="APP_VERSION")
+    git_sha: Optional[str] = Field(None, alias="GIT_SHA")
+    build_ts: Optional[str] = Field(None, alias="BUILD_TS")
 
     model_config = SettingsConfigDict(
         env_file=".env",

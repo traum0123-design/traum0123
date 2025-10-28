@@ -961,7 +961,7 @@ def api_export(
     except Exception:
         rows = []
     # Build workbook identical to Flask export using shared exporter
-    from core.exporter import build_salesmap_workbook
+    from core.exporter import build_salesmap_workbook_stream
     from core.schema import DEFAULT_COLUMNS
     # Build all_columns = DEFAULT + extras
     extras = db.query(ExtraField).filter(ExtraField.company_id == company.id).order_by(ExtraField.position.asc(), ExtraField.id.asc()).all()
@@ -975,7 +975,7 @@ def api_export(
             gp[p.field] = p.group
         if p.alias:
             ap[p.field] = p.alias
-    bio = build_salesmap_workbook(
+    bio = build_salesmap_workbook_stream(
         company_slug=company.slug,
         year=year,
         month=month,
@@ -1009,6 +1009,16 @@ def require_company(
             raise HTTPException(status_code=404, detail="company not found")
         raise HTTPException(status_code=403, detail="invalid token")
     return company
+
+
+@router.get("/meta")
+def meta():
+    settings = get_settings()
+    return {
+        "app_version": settings.app_version,
+        "git_sha": settings.git_sha or "",
+        "build_ts": settings.build_ts or "",
+    }
 
 
 def create_app() -> FastAPI:

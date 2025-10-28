@@ -52,6 +52,26 @@ def create_app() -> FastAPI:
     def root_redirect():
         return RedirectResponse(url="/admin/login", status_code=307)
 
+    @application.middleware("http")
+    async def security_headers(request, call_next):
+        resp = await call_next(request)
+        # Basic hardening headers (non-breaking)
+        resp.headers["X-Frame-Options"] = "DENY"
+        resp.headers["X-Content-Type-Options"] = "nosniff"
+        resp.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        resp.headers["Cross-Origin-Resource-Policy"] = "same-site"
+        # Introduce CSP in Report-Only and enforce baseline when not set by route
+        if "Content-Security-Policy-Report-Only" not in resp.headers:
+            resp.headers["Content-Security-Policy-Report-Only"] = "default-src 'self'; frame-ancestors 'none'"
+        if "Content-Security-Policy" not in resp.headers:
+            resp.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+        # HSTS only when the request is over HTTPS (direct or via proxy header)
+        xf_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
+        scheme = (request.url.scheme or "").lower()
+        if (scheme == "https" or xf_proto == "https") and "strict-transport-security" not in resp.headers:
+            resp.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return resp
+
     return application
 
 

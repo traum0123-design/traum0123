@@ -5,6 +5,7 @@ import json
 import os
 import secrets
 from pathlib import Path
+from urllib.parse import urlparse
 from typing import Optional
 
 from fastapi import APIRouter, Depends, Form, HTTPException, Request
@@ -27,6 +28,7 @@ from core.services.auth import (
     issue_company_token,
 )
 from core.services.extra_fields import add_extra_field, ensure_defaults
+from core.settings import get_settings
 from core.services.payroll import (
     build_columns_for_company,
     compute_withholding_tax,
@@ -55,6 +57,11 @@ CSRF_MAX_AGE = 60 * 60  # 1 hour
 
 
 def _ensure_csrf_token(request: Request) -> str:
+    # Reuse existing cookie value to avoid rotation across tabs
+    existing = request.cookies.get(CSRF_COOKIE_NAME)
+    if existing:
+        request.state.csrf_token = existing
+        return existing
     token = getattr(request.state, "csrf_token", None)
     if not token:
         token = secrets.token_urlsafe(32)
@@ -73,13 +80,14 @@ def _ensure_csp_nonce(request: Request) -> str:
 def _apply_template_security(request: Request, response):
     csrf_token = _ensure_csrf_token(request)
     nonce = _ensure_csp_nonce(request)
+    # Keep cookie stable and not accessible to JS
     response.set_cookie(
         key=CSRF_COOKIE_NAME,
-        value=csrf_token,
+        value=(request.cookies.get(CSRF_COOKIE_NAME) or csrf_token),
         max_age=CSRF_MAX_AGE,
         secure=COOKIE_SECURE,
-        samesite="Strict",
-        httponly=False,
+        samesite="Lax",
+        httponly=True,
         path="/",
     )
     csp_value = response.headers.get("Content-Security-Policy")
@@ -97,6 +105,19 @@ def _verify_csrf(request: Request, token: str | None = None) -> None:
     body_token = (token or "").strip()
     if not cookie_token:
         raise HTTPException(status_code=403, detail="missing csrf cookie")
+
+    # Same-origin check: prefer Origin, fall back to Referer when present
+    origin = (request.headers.get("origin") or "").strip()
+    if origin:
+        expected = f"{request.url.scheme}://{request.url.netloc}"
+        if origin != expected:
+            raise HTTPException(status_code=403, detail="invalid origin")
+    else:
+        referer = (request.headers.get("referer") or "").strip()
+        if referer:
+            ref = urlparse(referer)
+            if ref.scheme != request.url.scheme or ref.netloc != request.url.netloc:
+                raise HTTPException(status_code=403, detail="invalid referer")
 
     def _matches(candidate: str) -> bool:
         return bool(candidate) and secrets.compare_digest(candidate, cookie_token)
@@ -152,6 +173,7 @@ def _base_context(request: Request, company: Company | None = None) -> dict:
         },
         "csrf_token": lambda: _ensure_csrf_token(request),
         "csp_nonce": lambda: _ensure_csp_nonce(request),
+        "app_version": getattr(get_settings(), "app_version", "dev"),
         "get_flashed_messages": lambda **_: [],
         "url_for": _url_for,
     }
@@ -174,6 +196,7 @@ def login_page(request: Request, slug: str, db: Session = Depends(get_db), error
 
 @router.post("/{slug}/login", name="portal.login_post")
 def login_action(request: Request, slug: str, db: Session = Depends(get_db), access_code: str = Form(...), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
     company = company_service.find_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
@@ -323,14 +346,17 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
     if not company:
         return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
     cols, numeric_fields, date_fields, bool_fields, _ = build_columns_for_company(db, company)
-    content_type = request.headers.get("content-type", "")
+    content_type = (request.headers.get("content-type", "") or "").lower()
     if "application/json" in content_type:
+        # JSON payloads must send X-CSRF-Token header
+        _verify_csrf(request)
         payload = await request.json()
         rows = payload.get("rows") or []
         if not isinstance(rows, list):
             return JSONResponse({"ok": False, "error": "invalid payload"}, status_code=400)
     else:
         form = await request.form()
+        _verify_csrf(request, form.get("csrf_token"))
         rows = parse_rows(form, cols, numeric_fields, date_fields, bool_fields)
 
     record = (
@@ -367,6 +393,7 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
 
 @router.post("/{slug}/payroll/{year}/{month}/close", name="portal.close_payroll")
 def close_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     # As admin, allow without requiring portal token
@@ -396,6 +423,7 @@ def close_payroll(request: Request, slug: str, year: int, month: int, db: Sessio
 
 @router.post("/{slug}/payroll/{year}/{month}/open", name="portal.reopen_payroll")
 def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
     # As admin, allow without requiring portal token
@@ -425,38 +453,8 @@ def reopen_payroll(request: Request, slug: str, year: int, month: int, db: Sessi
 
 @router.get("/{slug}/export/{year}/{month}", name="portal.export_payroll")
 def export_payroll(slug: str, year: int, month: int, request: Request, db: Session = Depends(get_db)):
-    company = _require_company(request, slug, db)
-    if not company:
-        return RedirectResponse(url=f"/portal/{slug}/login", status_code=303)
-    record = (
-        db.query(MonthlyPayroll)
-        .filter(
-            MonthlyPayroll.company_id == company.id,
-            MonthlyPayroll.year == year,
-            MonthlyPayroll.month == month,
-        )
-        .first()
-    )
-    if not record:
-        raise HTTPException(status_code=404, detail="payroll not found")
-    try:
-        rows = json.loads(record.rows_json or "[]")
-    except Exception:
-        rows = []
-    cols, _, _, _, extras = build_columns_for_company(db, company)
-    all_cols = cols + [(ef.name, ef.label, ef.typ) for ef in extras]
-    group_map, alias_map, _, _ = load_field_prefs(db, company)
-    workbook = build_salesmap_workbook(
-        company_slug=company.slug,
-        year=year,
-        month=month,
-        rows=rows,
-        all_columns=all_cols,
-        group_prefs=group_map,
-        alias_prefs=alias_map,
-    )
-    filename = f"{company.slug}_{year:04d}_{month:02d}_salesmap.xlsx"
-    headers = {
-        "Content-Disposition": f"attachment; filename=\"{filename}\"",
-    }
-    return StreamingResponse(workbook, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)
+    # Deprecate portal export path in favor of API path, preserve auth via 307
+    resp = RedirectResponse(url=f"/api/portal/{slug}/export/{year}/{month}", status_code=307)
+    resp.headers["Deprecation"] = "true"
+    resp.headers["Link"] = f"</api/portal/{slug}/export/{year}/{month}>; rel=\"successor-version\""
+    return resp

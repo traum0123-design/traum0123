@@ -3,7 +3,7 @@ from __future__ import annotations
 import datetime as dt
 from typing import Optional
 
-from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint, Index
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, relationship
 
 
@@ -41,6 +41,7 @@ class MonthlyPayroll(Base):
 
     __table_args__ = (
         UniqueConstraint("company_id", "year", "month", name="uq_company_month"),
+        Index("ix_company_year_month", "company_id", "year", "month"),
     )
 
 
@@ -88,6 +89,7 @@ class WithholdingCell(Base):
 
     __table_args__ = (
         UniqueConstraint("year", "dependents", "wage", name="uq_withholding_key"),
+        Index("ix_withholding_year_dep_wage", "year", "dependents", "wage"),
     )
 
 
