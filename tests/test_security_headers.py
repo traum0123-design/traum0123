@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-
 
 def test_security_headers_present_on_root_redirect():
+    from app.main import create_app
     app = create_app()
     client = TestClient(app)
     r = client.get("/", follow_redirects=False)

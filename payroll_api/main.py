@@ -11,7 +11,7 @@ from fastapi.responses import JSONResponse, StreamingResponse
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
-from .database import engine, get_db
+from .database import get_db
 from core.models import Base, Company, MonthlyPayroll, WithholdingCell, ExtraField, FieldPref
 import os
 import secrets
@@ -26,6 +26,7 @@ from core.fields import cleanup_duplicate_extra_fields
 from core.rate_limit import get_admin_rate_limiter
 from core.settings import get_settings
 from core.alembic_utils import ensure_up_to_date
+from core.db import get_engine
 from core.services import companies as company_service
 from core.services.auth import (
     authenticate_admin,
@@ -78,7 +79,7 @@ async def lifespan(_: FastAPI):
     settings = get_settings()
     if settings.payroll_auto_apply_ddl:
         # Create tables if not exist (for POC). In production use Alembic.
-        Base.metadata.create_all(bind=engine)
+        Base.metadata.create_all(bind=get_engine())
     else:
         logging.getLogger("payroll_api").info(
             "PAYROLL_AUTO_APPLY_DDL=0: skipping automatic DDL. Ensure Alembic migrations have been applied."
@@ -89,7 +90,7 @@ async def lifespan(_: FastAPI):
                 "PAYROLL_ENFORCE_ALEMBIC=1 while PAYROLL_AUTO_APPLY_DDL=1; skipping migration check."
             )
         else:
-            ensure_up_to_date(engine)
+            ensure_up_to_date(get_engine())
     yield
 
 

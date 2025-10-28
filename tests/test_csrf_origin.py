@@ -2,11 +2,10 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-
 
 def test_admin_login_rejects_cross_origin(monkeypatch):
     monkeypatch.setenv("ADMIN_PASSWORD", "testpw")
+    from app.main import create_app
     app = create_app()
     client = TestClient(app)
 
@@ -24,4 +23,3 @@ def test_admin_login_rejects_cross_origin(monkeypatch):
         follow_redirects=False,
     )
     assert r.status_code == 403
-

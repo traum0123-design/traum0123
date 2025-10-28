@@ -2,13 +2,12 @@ from __future__ import annotations
 
 from fastapi.testclient import TestClient
 
-from app.main import create_app
-
 
 def test_admin_login_requires_csrf(monkeypatch):
     # Plaintext password for ease in tests
     monkeypatch.setenv("ADMIN_PASSWORD", "testpw")
 
+    from app.main import create_app
     app = create_app()
     client = TestClient(app)
 

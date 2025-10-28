@@ -7,6 +7,7 @@ from collections.abc import Generator
 
 from sqlalchemy import create_engine, event
 from sqlalchemy.engine import Engine, make_url
+from sqlalchemy.pool import StaticPool
 from sqlalchemy.orm import Session, scoped_session, sessionmaker
 
 from .alembic_utils import ensure_up_to_date
@@ -23,6 +24,11 @@ logger = logging.getLogger("payroll_core.db")
 
 
 def _resolve_database_url() -> str:
+    # Prefer runtime environment to avoid cached settings in tests
+    import os
+    env_url = os.environ.get("DATABASE_URL")
+    if env_url:
+        return env_url
     settings = get_settings()
     if settings.database_url:
         return settings.database_url
@@ -38,24 +44,39 @@ def get_engine(echo: bool = False) -> Engine:
     if _engine is None:
         database_url = _resolve_database_url()
         url = make_url(database_url)
-        connect_args = {}
         if url.get_backend_name() == "sqlite":
-            connect_args = {"check_same_thread": False}
             logger.warning(
                 "SQLite 백엔드를 사용 중입니다. 운영 환경에서는 PostgreSQL 같은 외부 DB 사용을 권장합니다."
             )
-        _engine = create_engine(database_url, echo=echo, future=True, connect_args=connect_args)
-        if url.get_backend_name() == "sqlite":
-            @event.listens_for(_engine, "connect")
-            def _set_sqlite_pragma(dbapi_connection, connection_record):  # type: ignore[unused-argument]
-                cursor = dbapi_connection.cursor()
-                try:
-                    cursor.execute("PRAGMA journal_mode=WAL;")
-                    cursor.execute("PRAGMA synchronous=NORMAL;")
-                    cursor.execute("PRAGMA foreign_keys=ON;")
-                finally:
-                    cursor.close()
-            logger.debug("SQLite 엔진 초기화: WAL 모드 및 foreign_keys 활성화")
+            is_memory = (url.database in (None, ":memory:") or str(url.database).startswith("file::memory:"))
+            if is_memory:
+                # Single shared in-memory connection across the app/test process
+                _engine = create_engine(
+                    database_url,
+                    echo=echo,
+                    future=True,
+                    connect_args={"check_same_thread": False},
+                    poolclass=StaticPool,
+                )
+            else:
+                _engine = create_engine(
+                    database_url,
+                    echo=echo,
+                    future=True,
+                    connect_args={"check_same_thread": False},
+                )
+                @event.listens_for(_engine, "connect")
+                def _set_sqlite_pragma(dbapi_connection, connection_record):  # type: ignore[unused-argument]
+                    cursor = dbapi_connection.cursor()
+                    try:
+                        cursor.execute("PRAGMA journal_mode=WAL;")
+                        cursor.execute("PRAGMA synchronous=NORMAL;")
+                        cursor.execute("PRAGMA foreign_keys=ON;")
+                    finally:
+                        cursor.close()
+                logger.debug("SQLite 엔진 초기화: WAL 모드 및 foreign_keys 활성화")
+        else:
+            _engine = create_engine(database_url, echo=echo, future=True)
     return _engine
 
 

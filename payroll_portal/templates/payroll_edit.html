@@ -8,6 +8,8 @@
     border-color: #DC2626 !important;
     background-color: #FEF2F2 !important;
   }
+  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; line-height:18px; font-weight:600; }
+  .badge-prorate { background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; }
 </style>
 
   <div class="toolbar">
@@ -107,7 +109,7 @@
 
     <!-- Middle: earnings -->
     <div class="panel">
-      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
+      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
       <div class="panel-body">
         <div id="basicInfo" class="basic-info"></div>
         <table id="earnTable"></table>
@@ -432,6 +434,161 @@ function nsKey(name){ return STORAGE_NS + name; }
   function inRange(d, start, end){ return d >= start && d <= end; }
   function val(tr, field){ return tr.querySelector(`[name$='[${field}]']`); }
   function setIfEmpty(el, v){ if(!el) return; if(el.type==='checkbox'){ if(!el.checked) el.checked = !!v; } else { if(!el.value) el.value = v; } }
+
+  // 일할계산 도우미: 월 범위/입퇴사/휴직을 고려해 근무일수/총일수 산출
+  function computeProrationForRow(baseTr){
+    const sInput = baseTr.querySelector(`[name$='[월 시작일]']`);
+    const eInput = baseTr.querySelector(`[name$='[월 말일]']`);
+    const ms = parseDate(sInput?.value || monthStart());
+    const me = parseDate(eInput?.value || monthEnd());
+    const join = parseDate(baseTr.querySelector(`[name$='[입사일]']`)?.value || '');
+    const leave = parseDate(baseTr.querySelector(`[name$='[퇴사일]']`)?.value || '');
+    const leaveStart = parseDate(baseTr.querySelector(`[name$='[휴직일]']`)?.value || '');
+    const leaveEnd = parseDate(baseTr.querySelector(`[name$='[휴직종료일]']`)?.value || '');
+    if(!ms || !me || me < ms){ return { days: 0, total: 0, percent: 0, prorated: false }; }
+    const total = Math.floor((me - ms) / (24*3600*1000)) + 1;
+    const actS = (join && join > ms) ? join : ms;
+    const actE = (leave && leave < me) ? leave : me;
+    if(actE < actS){ return { days: 0, total, percent: 0, prorated: total>0 }; }
+    let days = Math.floor((actE - actS) / (24*3600*1000)) + 1;
+    if(leaveStart){
+      const os = (leaveStart > ms) ? leaveStart : ms;
+      const oe = (leaveEnd && leaveEnd < me) ? leaveEnd : me;
+      const s = os > actS ? os : actS;
+      const e = oe < actE ? oe : actE;
+      if(e >= s){ days = Math.max(0, days - (Math.floor((e - s) / (24*3600*1000)) + 1)); }
+    }
+    const percent = total>0 ? Math.round((days/total)*100) : 0;
+    const prorated = (days !== total);
+    return { days, total, percent, prorated };
+  }
+
+  // ---------------- 일할계산: 대상 탐색/요약 ----------------
+  function findProrationCandidates(){
+    const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
+    const s = []; const joiners = []; const leavers = []; const onleaves = [];
+    rows.forEach((tr)=>{
+      const pr = computeProrationForRow(tr);
+      if(!pr || !pr.total) return;
+      const name = tr.querySelector(`[name$='[사원명]']`)?.value || tr.querySelector(`[name$='[사원코드]']`)?.value || '';
+      // Categories based on dates
+      const ms = parseDate(val(tr, '월 시작일')?.value || monthStart());
+      const me = parseDate(val(tr, '월 말일')?.value || monthEnd());
+      const join = parseDate(val(tr, '입사일')?.value || '');
+      const leave = parseDate(val(tr, '퇴사일')?.value || '');
+      const lS = parseDate(val(tr, '휴직일')?.value || '');
+      const lE = parseDate(val(tr, '휴직종료일')?.value || '');
+      const isJoin = !!(join && inRange(join, ms, me));
+      const isLeave = !!(leave && inRange(leave, ms, me));
+      const isOnLeave = !!(lS && (lS <= me) && (!lE || lE >= ms));
+      if(pr.prorated){
+        s.push({ name, pr });
+        if(isJoin) joiners.push(name);
+        if(isLeave) leavers.push(name);
+        if(isOnLeave) onleaves.push(name);
+      }
+    });
+    return {
+      list: s,
+      joiners,
+      leavers,
+      onleaves,
+      counts: { join: joiners.length, leave: leavers.length, onleave: onleaves.length, total: s.length },
+      samples(){
+        function samp(arr){ return arr.slice(0, 5).join(', '); }
+        return { join: samp(joiners), leave: samp(leavers), onleave: samp(onleaves) };
+      }
+    };
+  }
+
+  // ---------------- 일할계산: 적용 ----------------
+  function applyProrationForAll(){
+    const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
+    const { earnings } = classify();
+    rows.forEach((tr)=>{
+      const pr = computeProrationForRow(tr);
+      if(!pr || !pr.total || !pr.prorated) return;
+      const ratio = pr.total > 0 ? (pr.days / pr.total) : 0;
+      (earnings||[]).forEach(([field,label,typ])=>{
+        // 상여 포함 라벨은 제외
+        if(String(label||'').indexOf('상여') !== -1) return;
+        const input = tr.querySelector(`[name$='[${CSS.escape(field)}]']`);
+        if(!input) return;
+        const origKey = 'orig';
+        const raw = (input.dataset[origKey] !== undefined) ? input.dataset[origKey] : input.value;
+        if(input.dataset[origKey] === undefined){ input.dataset[origKey] = raw; }
+        const base = Number((String(raw||'').replace(/,/g,'').match(/-?\d+(?:\.\d+)?/)||['0'])[0]);
+        const val = Math.trunc(base * ratio);
+        input.value = String(val);
+        try{ input.dispatchEvent(new Event('input', { bubbles:true })); }catch(_){ }
+      });
+    });
+    try{ scheduleKpiUpdate(); }catch(_){ }
+    try{ window.__PRORATE_APPLIED__ = `${SLUG}:${YEAR}${pad(MONTH)}`; localStorage.setItem(nsKey('pr_applied_'+YEAR+pad(MONTH)), '1'); }catch(_){ }
+  }
+
+  // ---------------- 일할계산: 모달 ----------------
+  function buildProrationModal(){
+    const sum = findProrationCandidates();
+    const el = document.getElementById('prSummary');
+    if(el){
+      const c = sum.counts;
+      el.innerHTML = `<div class="muted">중도입사 ${c.join} · 중도퇴사 ${c.leave} · 휴직 ${c.onleave} (총 ${c.total})</div>`;
+      const samp = sum.samples();
+      const list = document.getElementById('prSamples');
+      if(list){ list.innerHTML = '';
+        ['join','leave','onleave'].forEach((k)=>{
+          if(!sum.counts[k]) return; const li = document.createElement('li');
+          li.textContent = (k==='join'?'중도입사':'leave'===k?'중도퇴사':'휴직')+': '+samp[k];
+          list.appendChild(li);
+        });
+      }
+    }
+  }
+  function openProrationModal(mode){
+    if(IS_CLOSED) return;
+    buildProrationModal();
+    const modal = document.getElementById('prorationModal');
+    if(!modal) return;
+    modal.dataset.mode = (mode||'manual');
+    // Toggle footer buttons by mode
+    const manual = modal.querySelectorAll('[data-only="manual"]');
+    const guard = modal.querySelectorAll('[data-only="guard"]');
+    manual.forEach(el=> el.style.display = (mode==='save'?'none':'inline-flex'));
+    guard.forEach(el=> el.style.display = (mode==='save'?'inline-flex':'none'));
+    modal.style.display = 'flex';
+  }
+  function closeProrationModal(){ const modal = document.getElementById('prorationModal'); if(modal) modal.style.display='none'; }
+  function applyProrationManual(){ applyProrationForAll(); closeProrationModal(); }
+  function applyProrationAndSave(){ applyProrationForAll(); try{ document.getElementById('payrollForm').requestSubmit(); }catch(_){ } }
+  function saveAnyway(){ try{ document.getElementById('payrollForm').requestSubmit(); }catch(_){ } }
+
+  // ---------------- 저장 가드 ----------------
+  (function(){
+    const form = document.getElementById('payrollForm'); if(!form) return;
+    form.addEventListener('submit', function(e){
+      if(IS_CLOSED) return; // no guard when closed
+      try{
+        const suppressKey = nsKey('pr_noask_'+YEAR+pad(MONTH));
+        if(localStorage.getItem(suppressKey)==='1') return;
+        const appliedKey = nsKey('pr_applied_'+YEAR+pad(MONTH));
+        const sum = findProrationCandidates();
+        const needs = (sum && sum.counts && sum.counts.total>0);
+        const already = (localStorage.getItem(appliedKey)==='1');
+        if(needs && !already){
+          e.preventDefault();
+          openProrationModal('save');
+        }
+      }catch(_){ }
+    }, true);
+    // Remember "다시 묻지 않기"
+    document.addEventListener('change', (ev)=>{
+      const t = ev.target; if(!(t instanceof HTMLElement)) return;
+      if(t.id === 'prNoAsk'){
+        try{ const key = nsKey('pr_noask_'+YEAR+pad(MONTH)); if(t.checked){ localStorage.setItem(key, '1'); } else { localStorage.removeItem(key); } }catch(_){ }
+      }
+    });
+  })();
 
   function fillMonthDefaults(tr){
     const s = val(tr, '월 시작일');
@@ -1092,6 +1249,27 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
         inp.value = isNumericField(field) ? formatNumeric(val) : val;
       }
     });
+    // Update proration badge inside '사원명' cell
+    try{
+      const pr = computeProrationForRow(base);
+      const nameInput = row.querySelector("input.list-input[data-field='사원명']");
+      const nameTd = nameInput ? nameInput.closest('td') : null;
+      if(nameTd){
+        let badge = nameTd.querySelector('.pr-badge');
+        if(pr.prorated && pr.total>0){
+          const text = `일할 ${pr.days}/${pr.total} (${pr.percent}%)`;
+          if(!badge){
+            badge = document.createElement('span');
+            badge.className = 'badge badge-prorate pr-badge';
+            badge.style.marginLeft = '6px';
+            nameTd.appendChild(badge);
+          }
+          badge.textContent = text;
+        }else if(badge){
+          badge.remove();
+        }
+      }
+    }catch(_){ }
   }
   function bindProxy(input, base, field, typ){
     if(!base || base.disabled || base.readOnly){ input.disabled = true; input.readOnly = true; return; }
@@ -1292,8 +1470,22 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
         input.addEventListener('compositionend', ()=>{ input.dataset.comp = ''; gridInputChanged(input); });
         input.addEventListener('input', (e)=>{ if(e.isComposing || input.dataset.comp === '1') return; gridInputChanged(input); });
         td.appendChild(input);
+        // Inline proration badge next to name for visibility
+        if(field === '사원명'){
+          try{
+            const pr = computeProrationForRow(tr);
+            if(pr && pr.prorated && pr.total>0){
+              const b = document.createElement('span');
+              b.className = 'badge badge-prorate pr-badge';
+              b.style.marginLeft = '6px';
+              b.textContent = `일할 ${pr.days}/${pr.total} (${pr.percent}%)`;
+              td.appendChild(b);
+            }
+          }catch(_){ }
+        }
         rowEl.appendChild(td);
       });
+      // proration indicator now inline with name cell (no extra column)
       fragment.appendChild(rowEl);
     });
     tbody.innerHTML = '';
@@ -1845,6 +2037,28 @@ function gridInputChanged(el){
 
 
 </script>
+
+<!-- Proration Modal -->
+<div id="prorationModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:65; align-items:center; justify-content:center;">
+  <div class="card" style="max-width:640px; width:90%;">
+    <h2>일할계산 반영</h2>
+    <p id="prSummary" class="muted">대상 집계 중…</p>
+    <div class="modal-scroll" style="max-height: 40vh; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:8px; margin:8px 0; background:#fff;">
+      <ul id="prSamples" class="muted" style="margin:0; padding-left:18px;"></ul>
+      <p class="hint" style="margin-top:8px;">상여 등 일부 항목은 일할 대상에서 제외됩니다.</p>
+    </div>
+    <div style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
+      <label class="muted" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="prNoAsk"> 이번 세션에서 다시 묻지 않기</label>
+      <div style="display:flex; gap:8px; justify-content:flex-end;">
+        <button type="button" data-only="manual" onclick="closeProrationModal()">닫기</button>
+        <button type="button" class="primary" data-only="manual" onclick="applyProrationManual()">적용</button>
+        <button type="button" data-only="guard" onclick="closeProrationModal()">취소</button>
+        <button type="button" data-only="guard" onclick="saveAnyway()">그대로 저장</button>
+        <button type="button" class="primary" data-only="guard" onclick="applyProrationAndSave()">적용하고 저장</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- Row Detail Drawer -->
 <div id="rowDrawer" class="drawer" style="display:none">

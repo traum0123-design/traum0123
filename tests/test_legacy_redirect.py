@@ -5,8 +5,6 @@ import datetime as dt
 from fastapi.testclient import TestClient
 from sqlalchemy.orm import Session
 
-from app.main import create_app
-
 
 def test_portal_export_redirects_to_api(monkeypatch):
     # Use in-memory DB
@@ -29,6 +27,7 @@ def test_portal_export_redirects_to_api(monkeypatch):
         db.add(MonthlyPayroll(company_id=c.id, year=2024, month=5, rows_json="[]"))
         db.commit()
 
+    from app.main import create_app
     app = create_app()
     client = TestClient(app)
     r = client.get(f"/portal/{slug}/export/2024/5", follow_redirects=False)
