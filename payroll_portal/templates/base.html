@@ -26,13 +26,12 @@
   </header>
 
   <main class="container">
+    <div class="flash-area" aria-live="polite" aria-atomic="true"></div>
     {% with messages = get_flashed_messages(with_categories=true) %}
       {% if messages %}
-        <div class="flash-area">
-          {% for category, message in messages %}
-            <div class="flash {{ category }}">{{ message }}</div>
-          {% endfor %}
-        </div>
+        {% for category, message in messages %}
+          <div class="flash {{ category }}" role="status">{{ message }}</div>
+        {% endfor %}
       {% endif %}
     {% endwith %}
 
@@ -40,16 +39,13 @@
   </main>
 
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/utils.js') }}?v={{ app_version }}"></script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='i18n.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/state.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/dom.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/calc.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='payroll/ui.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='app.js') }}?v={{ app_version }}"></script>
   <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='runtime.js') }}?v={{ app_version }}"></script>
-  <script nonce="{{ csp_nonce() }}">
-    (function(){
-      try{ window.__CSRF__ = document.querySelector('meta[name="csrf-token"]').getAttribute('content'); }catch(e){ }
-    })();
-  </script>
+  <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='init_csrf.js') }}?v={{ app_version }}"></script>
 </body>
 </html>

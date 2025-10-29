@@ -16,6 +16,8 @@ class PayrollSettings(BaseSettings):
     payroll_auto_apply_ddl: bool = Field(True, alias="PAYROLL_AUTO_APPLY_DDL")
     admin_rate_limit_backend: str = Field("auto", alias="ADMIN_RATE_LIMIT_BACKEND")
     admin_rate_limit_redis_url: Optional[str] = Field(None, alias="ADMIN_RATE_LIMIT_REDIS_URL")
+    # Redis rate limit fail policy: 'open' (allow when Redis down), 'closed' (block), 'memory' (fallback to in-proc)
+    admin_rate_limit_redis_policy: str = Field("open", alias="ADMIN_RATE_LIMIT_REDIS_POLICY")
     enforce_alembic_migrations: bool = Field(False, alias="PAYROLL_ENFORCE_ALEMBIC")
     # Build/meta info
     app_version: str = Field("dev", alias="APP_VERSION")
@@ -64,6 +66,14 @@ class PayrollSettings(BaseSettings):
         if val not in {"auto", "memory", "redis"}:
             return "memory"
         return val or "auto"
+
+    @field_validator("admin_rate_limit_redis_policy", mode="before")
+    @classmethod
+    def _normalize_redis_policy(cls, value: str | None) -> str:
+        val = (value or "open").strip().lower()
+        if val not in {"open", "closed", "memory"}:
+            return "open"
+        return val
 
     @field_validator("enforce_alembic_migrations", mode="before")
     @classmethod

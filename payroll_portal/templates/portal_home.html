@@ -1,16 +1,16 @@
 {% extends 'base.html' %}
 {% block content %}
-<div class="center" style="max-width:960px;">
+<div class="center-narrow">
   <div class="kicker">PAYROLL</div>
   <h1>{{ company_name }} · 월 선택</h1>
 
-  <div class="card" style="margin-bottom:14px; display:flex; align-items:center; gap:10px; justify-content:center;">
+  <div class="card mb-14 flex-center gap-10">
     <button class="btn" data-action="changeYearPrev">◀</button>
-    <strong style="font-size:20px; min-width:120px; text-align:center">{{ year }}년</strong>
+    <strong class="fs-20 minw-120 text-center">{{ year }}년</strong>
     <button class="btn" data-action="changeYearNext">▶</button>
   </div>
 
-  <div class="card" style="padding:16px;">
+  <div class="card p-16">
     <input type="hidden" id="currentYear" value="{{ year }}">
     <div class="grid-months">
       {% for m in months %}
@@ -41,25 +41,7 @@
   </div>
 </div>
 
-<style>
-  .grid-months{ display:grid; grid-template-columns: repeat(4, 1fr); gap:12px; }
-  @media (max-width: 720px){ .grid-months{ grid-template-columns: repeat(3, 1fr); } }
-  .month-btn{ display:block; border:1px solid var(--border); border-radius:12px; padding:14px; text-decoration:none; color:inherit; transition:all .15s ease; }
-  .month-btn:hover{ box-shadow:var(--shadow); transform: translateY(-1px); }
-  .month-btn .m{ font-weight:700; font-size:18px; }
-  .month-btn .s{ font-size:12px; opacity:.85; }
-  .month-btn .u{ font-size:11px; opacity:.6; margin-top:4px; }
-  .month-btn.closed{ background:#ecfdf5; border-color:#10b98155; }
-  .month-btn.saved{ background:#f8fafc; border-color:#94a3b844; }
-  .month-btn.none{ background:#fff; }
-  .month-btn.current{ outline:2px solid #2563eb; }
-  .legend{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
-  .badge{ display:inline-block; padding:4px 8px; border-radius:999px; font-size:12px; border:1px solid var(--border); }
-  .badge.b-closed{ background:#ecfdf5; border-color:#10b98155; }
-  .badge.b-saved{ background:#f8fafc; border-color:#94a3b844; }
-  .badge.b-none{ background:#fff; }
-  .badge.b-current{ background:#e0edff; border-color:#2563eb55; }
-</style>
+ 
 
 <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='portal_home.js') }}"></script>
 {% endblock %}

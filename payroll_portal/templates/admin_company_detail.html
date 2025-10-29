@@ -15,12 +15,14 @@
 <div class="card">
   <h2>회사 포털 바로가기 (관리자)</h2>
   <p>
-    <a class="btn primary" href="{{ url_for('admin.company_impersonate', company_id=company.id) }}">포털 홈 열기</a>
+    <a class="btn primary" href="{{ url_for('admin.company_impersonate', company_id=company.id) }}" aria-label="포털 홈 열기">포털 홈 열기</a>
   </p>
-  <form method="get" class="form inline" data-local="1" action="{{ url_for('admin.company_impersonate', company_id=company.id) }}">
-    <label>연도 <input type="number" name="year" min="2000" max="2100" placeholder="예: 2025"></label>
-    <label>월 <input type="number" name="month" min="1" max="12" placeholder="예: 10"></label>
-    <button type="submit">해당 월 입력 페이지 열기</button>
+  <form method="get" class="form inline" data-local="1" action="{{ url_for('admin.company_impersonate', company_id=company.id) }}" aria-label="해당 월 바로가기">
+    <label for="impYear">연도</label>
+    <input id="impYear" type="number" name="year" min="2000" max="2100" placeholder="예: 2025">
+    <label for="impMonth">월</label>
+    <input id="impMonth" type="number" name="month" min="1" max="12" placeholder="예: 10">
+    <button type="submit" aria-label="해당 월 입력 페이지 열기">해당 월 입력 페이지 열기</button>
   </form>
 </div>
 
@@ -29,12 +31,26 @@
   <strong>신규 접속코드</strong>
   <p>이 코드는 이번 1회만 표시됩니다. 고객사에 안전하게 전달하세요.</p>
   <div class="codebox">{{ new_code }}</div>
+</div>
 {% endif %}
 
-<form method="post" data-local="1" action="{{ url_for('admin.company_reset_code', company_id=company.id) }}">
+<form method="post" data-local="1" action="{{ url_for('admin.company_reset_code', company_id=company.id) }}" aria-label="접속코드 재발급">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-  <button type="submit" class="danger">접속코드 재발급</button>
+  <button type="submit" class="danger" aria-label="접속코드 재발급">접속코드 재발급</button>
 </form>
+
+<div class="card">
+  <h2>토큰 키 회전(강제 로그아웃)</h2>
+  {% if token_rotated %}
+  <p class="ok">토큰 키가 회전되었습니다. 기존 포털 토큰은 즉시 무효화됩니다.</p>
+  {% endif %}
+  <p class="muted">이 작업을 수행하면 해당 회사의 모든 기존 포털 토큰이 무효화되어 재로그인이 필요합니다.</p>
+  <form method="post" data-local="1" action="{{ url_for('admin.company_rotate_token_key', company_id=company.id) }}" aria-label="토큰 키 회전">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="danger" aria-label="토큰 키 회전">토큰 키 회전</button>
+  </form>
+  <p class="muted">토큰 키 회전은 필요 시에만 수행하세요. 고객사에게 영향이 있습니다.</p>
+  </div>
 
 <p>
   <a class="btn" href="{{ url_for('admin.index') }}">목록으로</a>

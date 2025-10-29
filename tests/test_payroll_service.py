@@ -109,3 +109,25 @@ def test_compute_deductions_honours_base_exemptions(session, company, insure_con
     assert meta["default_base"] == 2_100_000
     assert amounts["national_pension"] == 94_500
     assert amounts["income_tax"] == 110_000
+
+
+def test_compute_deductions_min_base_applied(session, company, insure_config):
+    """NPS min_base should raise the contribution base when default_base is lower."""
+    _seed_field_prefs(session, company)
+    _seed_withholding_table(session)
+    insure_config["nps"]["min_base"] = 3_000_000
+    row = {"기본급": 2_000_000, "식대": 100_000, "부양가족수": 1}
+    amounts, meta = payroll_service.compute_deductions(session, company, row, 2024)
+    # default_base = 2,100,000 but min_base=3,000,000 so NPS uses 3,000,000
+    assert amounts["national_pension"] == 135_000
+
+
+def test_compute_deductions_max_base_applied(session, company, insure_config):
+    """NPS max_base should cap the contribution base when default_base is higher."""
+    _seed_field_prefs(session, company)
+    _seed_withholding_table(session)
+    insure_config["nps"]["max_base"] = 3_000_000
+    row = {"기본급": 5_000_000, "식대": 0, "부양가족수": 1}
+    amounts, meta = payroll_service.compute_deductions(session, company, row, 2024)
+    # default_base = 5,000,000 but max_base=3,000,000 so NPS uses 3,000,000
+    assert amounts["national_pension"] == 135_000

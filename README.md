@@ -114,6 +114,7 @@ PYTHONPATH=. pytest tests/test_payroll_service.py tests/test_excel_export.py
 - 개발 환경에서는 `DATABASE_URL`을 지정하지 않으면 저장소 내부 SQLite(`payroll_portal/app.db`)를 사용합니다.
 - SQLite 사용 시 WAL 모드/`foreign_keys=ON`이 자동 적용되지만, 운영 환경에서는 PostgreSQL 등 외부 DB를 `DATABASE_URL`로 지정하는 것을 권장합니다.
 - 레이트리밋은 기본적으로 Redis 연결이 설정되어 있으면 자동으로 Redis 백엔드를 사용합니다. 운영 환경에서는 `ADMIN_RATE_LIMIT_REDIS_URL`을 반드시 설정하세요.
+  - 장애 정책: `ADMIN_RATE_LIMIT_REDIS_POLICY=open|closed|memory` (기본 `open`) — Redis 오류 시 허용/차단/메모리 폴백을 선택.
 
 ## QA 체크리스트
 

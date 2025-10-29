@@ -41,6 +41,7 @@ from core.services.payroll import (
 from core.services.persistence import sync_normalized_rows
 from payroll_api.database import get_db
 from payroll_portal.services.rate_limit import limiter, portal_login_key
+from payroll_portal.utils.assets import resolve_static
 
 router = APIRouter(prefix="/portal", tags=["portal"])
 
@@ -162,7 +163,8 @@ def _base_context(request: Request, company: Company | None = None) -> dict:
             filename = params.pop("filename", None)
             path_value = params.pop("path", None)
             static_path = filename or path_value or ""
-            return request.app.url_path_for("static", path=static_path)
+            mapped = resolve_static(static_path)
+            return request.app.url_path_for("static", path=mapped)
         return request.url_for(target, **params)
 
     return {

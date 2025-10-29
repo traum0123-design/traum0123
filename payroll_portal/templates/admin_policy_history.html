@@ -1,0 +1,90 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>정책 변경 이력</h1>
+
+<form class="form inline" method="get" action="{{ url_for('admin.policy_history') }}" aria-label="정책 이력 필터">
+  <label for="phCompany">회사
+    <select id="phCompany" name="company_id">
+      <option value="">전체</option>
+      {% for opt in company_options %}
+        <option value="{{ opt.id }}" {% if filters.company_id==opt.id %}selected{% endif %}>{{ opt.label }} ({{ opt.id }})</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="phCompanySlug">회사 슬러그
+    <input id="phCompanySlug" name="company_slug" type="text" list="phCompanyList" value="{{ filters.company_slug or '' }}" placeholder="예: acme">
+    <datalist id="phCompanyList">
+      {% for opt in company_options %}
+        <option value="{{ opt.label }}">{{ opt.id }}</option>
+      {% endfor %}
+    </datalist>
+  </label>
+  <label for="phYear">연도
+    <select id="phYear" name="year">
+      <option value="">전체</option>
+      {% for y in year_options %}
+        <option value="{{ y }}" {% if filters.year==y %}selected{% endif %}>{{ y }}</option>
+      {% endfor %}
+    </select>
+  </label>
+  <label for="phOrder">정렬
+    <select id="phOrder" name="order">
+      <option value="desc" {% if filters.order == 'desc' %}selected{% endif %}>최신순</option>
+      <option value="asc" {% if filters.order == 'asc' %}selected{% endif %}>오래된순</option>
+    </select>
+  </label>
+  <button type="submit">필터 적용</button>
+  {% if next_cursor %}
+    <a class="btn" href="{{ url_for('admin.policy_history') }}?cursor={{ next_cursor }}&company_id={{ filters.company_id or '' }}&year={{ filters.year or '' }}&order={{ filters.order }}" aria-label="다음 페이지">다음</a>
+  {% endif %}
+</form>
+
+<div class="card" role="region" aria-label="정책 변경 이력 목록">
+  <div class="table-wrap">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">시간</th>
+        <th scope="col">회사</th>
+        <th scope="col">연도</th>
+        <th scope="col">행위자</th>
+        <th scope="col">변경(요약)</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in items %}
+      <tr>
+        <td>{{ e.ts.strftime('%Y-%m-%d %H:%M:%S') if e.ts else '' }}</td>
+        <td>{{ e.company_id or '' }}</td>
+        <td>{{ e.year }}</td>
+        <td>{{ e.actor }}</td>
+        <td>
+          {{ e.summary or '' }}
+          <details>
+            <summary>자세히</summary>
+            <pre class="p-12">Diff:
+{% for line in e.diff_lines %}
+{% if line.startswith('+') and not line.startswith('+++') %}<span class="diff-add">{{ line }}</span>
+{% elif line.startswith('-') and not line.startswith('---') %}<span class="diff-del">{{ line }}</span>
+{% else %}{{ line }}
+{% endif %}
+{% endfor %}
+            </pre>
+          </details>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td colspan="5">기록이 없습니다.</td></tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+</div>
+
+<p>
+  <a class="btn" href="{{ url_for('admin.index') }}">관리자 홈</a>
+  {% if next_cursor %}
+    <a class="btn" href="{{ url_for('admin.policy_history') }}?cursor={{ next_cursor }}&company_id={{ filters.company_id or '' }}&year={{ filters.year or '' }}&order={{ filters.order }}">다음 페이지</a>
+  {% endif %}
+</p>
+{% endblock %}

@@ -7,6 +7,23 @@ on:
     branches: [ main ]
 
 jobs:
+  frontend-build:
+    name: Frontend build (Vite optional)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: frontend/package.json
+      - name: Install deps and build
+        working-directory: frontend
+        run: |
+          npm install
+          npm run build
+
   quality:
     name: Lint and Type-Check
     runs-on: ubuntu-latest
@@ -21,6 +38,7 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install -r requirements-dev.txt
+          pip install hypothesis
       - name: Editable install (packaging sanity)
         run: |
           pip install -e .
@@ -33,6 +51,14 @@ jobs:
         env:
           PYTHONPATH: .
         run: mypy app payroll_api core/services/payroll.py core/exporter.py core/services/calculation.py
+      - name: Security (bandit)
+        run: |
+          pip install bandit
+          bandit -q -r app core payroll_api scripts
+      - name: Dependency audit (pip-audit)
+        run: |
+          pip install pip-audit
+          pip-audit -r requirements.txt
 
   test:
     name: Build, Migrate, and Test
@@ -51,6 +77,9 @@ jobs:
       - name: Compile check
         run: |
           python -m compileall app core gateway payroll_api tests
+      - name: Build static assets
+        run: |
+          python scripts/build_static.py
       - name: Alembic migrate (SQLite)
         env:
           DATABASE_URL: sqlite:///./payroll_portal/app.db
@@ -66,15 +95,42 @@ jobs:
         run: |
           alembic downgrade base
           alembic upgrade head
-      - name: Run tests
+      - name: Enforce Alembic (app guard)
+        env:
+          DATABASE_URL: sqlite:///./payroll_portal/app.db
+          PAYROLL_AUTO_APPLY_DDL: "0"
+          PAYROLL_ENFORCE_ALEMBIC: "1"
+        run: |
+          python scripts/verify_migrations.py
+      - name: Run tests with coverage (>=80%)
         env:
           PYTHONPATH: .
-        run: pytest -q
+        run: |
+          pytest -q --cov=app --cov=payroll_api --cov=core --cov-report=term-missing --cov-fail-under=80
 
   build:
     name: Docker build
     runs-on: ubuntu-latest
+    needs: frontend-build
     steps:
       - uses: actions/checkout@v4
       - name: Build image
         run: docker build -t payroll-portal-ci:latest .
+
+  image-scan:
+    name: Image scan (Trivy)
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build image
+        run: docker build -t payroll-portal-ci:latest .
+      - name: Run Trivy vulnerability scanner
+        uses: aquasecurity/trivy-action@0.24.0
+        with:
+          image-ref: 'payroll-portal-ci:latest'
+          format: 'table'
+          vuln-type: 'os,library'
+          severity: 'CRITICAL'
+          exit-code: '1'
+          ignore-unfixed: true

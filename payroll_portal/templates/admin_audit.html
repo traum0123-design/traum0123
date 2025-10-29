@@ -1,0 +1,66 @@
+{% extends 'base.html' %}
+{% block content %}
+<h1>감사 로그</h1>
+
+<form class="form inline" method="get" action="{{ url_for('admin.audit') }}" aria-label="감사 로그 필터">
+  <label for="companyId">회사 ID
+    <input id="companyId" name="company_id" type="number" value="{{ filters.company_id or '' }}" placeholder="예: 1">
+  </label>
+  <label for="actor">행위자
+    <input id="actor" name="actor" type="text" value="{{ filters.actor or '' }}" placeholder="예: admin or company:acme">
+  </label>
+  <label for="order">정렬
+    <select id="order" name="order">
+      <option value="desc" {% if filters.order == 'desc' %}selected{% endif %}>최신순</option>
+      <option value="asc" {% if filters.order == 'asc' %}selected{% endif %}>오래된순</option>
+    </select>
+  </label>
+  <button type="submit" aria-label="필터 적용">필터 적용</button>
+  {% if next_cursor %}
+    <a class="btn" href="{{ url_for('admin.audit') }}?cursor={{ next_cursor }}&company_id={{ filters.company_id or '' }}&actor={{ filters.actor or '' }}&order={{ filters.order }}" aria-label="다음 페이지">다음</a>
+  {% endif %}
+</form>
+
+<div class="card" role="region" aria-label="감사 이벤트 목록">
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col">시간</th>
+        <th scope="col">회사</th>
+        <th scope="col">행위자</th>
+        <th scope="col">행위</th>
+        <th scope="col">리소스</th>
+        <th scope="col">결과</th>
+        <th scope="col">IP</th>
+        <th scope="col">UA</th>
+      </tr>
+    </thead>
+    <tbody>
+      {% for e in events %}
+      <tr>
+        <td>{{ e.ts.strftime('%Y-%m-%d %H:%M:%S') if e.ts else '' }}</td>
+        <td>{{ e.company_id or '' }}</td>
+        <td>{{ e.actor }}</td>
+        <td>{{ e.action }}</td>
+        <td>{{ e.resource }}</td>
+        <td>{{ e.result }}</td>
+        <td>{{ e.ip }}</td>
+        <td title="{{ e.ua }}">{{ e.ua[:24] }}{% if e.ua and e.ua|length > 24 %}…{% endif %}</td>
+      </tr>
+      {% else %}
+      <tr>
+        <td colspan="8">기록이 없습니다.</td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+</div>
+
+<p>
+  <a class="btn" href="{{ url_for('admin.index') }}" aria-label="관리자 홈으로">관리자 홈</a>
+  {% if next_cursor %}
+    <a class="btn" href="{{ url_for('admin.audit') }}?cursor={{ next_cursor }}&company_id={{ filters.company_id or '' }}&actor={{ filters.actor or '' }}&order={{ filters.order }}">다음 페이지</a>
+  {% endif %}
+</p>
+{% endblock %}
+

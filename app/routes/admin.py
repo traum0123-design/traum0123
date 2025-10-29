@@ -9,9 +9,10 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from core.models import Company, WithholdingCell
+from core.models import Company, WithholdingCell, AuditEvent, PolicySettingHistory
 from core.services import companies as company_service
 from core.services.auth import issue_admin_token, issue_company_token
+from core.services.audit import record_event
 from payroll_api.database import get_db
 
 from .portal import (
@@ -41,7 +42,7 @@ def login_page(request: Request):
 
 
 @router.post("/login", name="admin.login_post")
-def login_action(request: Request, password: str = Form(...), csrf_token: str | None = Form(None)):
+def login_action(request: Request, password: str = Form(...), csrf_token: str | None = Form(None), db: Session = Depends(get_db)):
     _verify_csrf(request, csrf_token)
     rl = limiter()
     key = admin_login_key(request)
@@ -52,7 +53,15 @@ def login_action(request: Request, password: str = Form(...), csrf_token: str | 
         except Exception:
             exceeded = True
         if exceeded:
+            try:
+                record_event(db=db, actor='admin', action='login_rate_limited', resource='/admin/login', ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''), result='fail')
+            except Exception:
+                pass
             return RedirectResponse(url="/admin/login?error=too_many_attempts", status_code=303)
+        try:
+            record_event(db=db, actor='admin', action='login_failed', resource='/admin/login', ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''), result='fail')
+        except Exception:
+            pass
         return RedirectResponse(url="/admin/login?error=1", status_code=303)
     token = issue_admin_token()
     response = RedirectResponse(url="/admin/", status_code=303)
@@ -63,6 +72,10 @@ def login_action(request: Request, password: str = Form(...), csrf_token: str | 
         samesite="lax",
         secure=COOKIE_SECURE,
     )
+    try:
+        record_event(db=db, actor='admin', action='login_success', resource='/admin/login', ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''), result='ok')
+    except Exception:
+        pass
     return response
 
 
@@ -120,7 +133,13 @@ def company_new(request: Request, name: str = Form(...), slug: str = Form(...), 
 
 
 @router.get("/company/{company_id}", response_class=HTMLResponse, name="admin.company_detail")
-def company_detail(request: Request, company_id: int, db: Session = Depends(get_db), code: str | None = None):
+def company_detail(
+    request: Request,
+    company_id: int,
+    db: Session = Depends(get_db),
+    code: str | None = None,
+    rotated: int | None = None,
+):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)
@@ -130,6 +149,7 @@ def company_detail(request: Request, company_id: int, db: Session = Depends(get_
     context.update({
         "company": company,
         "new_code": code,
+        "token_rotated": bool(rotated) if rotated is not None else False,
         "portal_login_url": f"/portal/{company.slug}/login",
     })
     response = templates.TemplateResponse("admin_company_detail.html", context)
@@ -145,7 +165,32 @@ def company_reset_code(request: Request, company_id: int, db: Session = Depends(
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     code = company_service.rotate_company_access(db, company)
+    try:
+        record_event(db=db, actor='admin', action='company_access_code_rotated', resource=f"/admin/company/{company_id}/reset-code", company_id=company.id, ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''))
+    except Exception:
+        pass
     return RedirectResponse(url=f"/admin/company/{company_id}?code={code}", status_code=303)
+
+
+@router.post("/company/{company_id}/rotate-token-key", name="admin.company_rotate_token_key")
+def company_rotate_token_key(
+    request: Request,
+    company_id: int,
+    db: Session = Depends(get_db),
+    csrf_token: str | None = Form(None),
+):
+    _verify_csrf(request, csrf_token)
+    if not _is_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    company = db.get(Company, company_id)
+    if not company:
+        raise HTTPException(status_code=404, detail="company not found")
+    company_service.rotate_company_token_key(db, company)
+    try:
+        record_event(db=db, actor='admin', action='company_token_key_rotated', resource=f"/admin/company/{company_id}/rotate-token-key", company_id=company.id, ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''))
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/admin/company/{company_id}?rotated=1", status_code=303)
 
 
 @router.get("/company/{company_id}/impersonate", name="admin.company_impersonate")
@@ -177,3 +222,191 @@ def company_impersonate(request: Request, company_id: int, db: Session = Depends
             secure=COOKIE_SECURE,
         )
     return response
+
+
+@router.get("/audit", response_class=HTMLResponse, name="admin.audit")
+def audit_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    company_id: int | None = None,
+    actor: str | None = None,
+    cursor: str | None = None,
+    order: str | None = None,
+):
+    if not _is_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    q = db.query(AuditEvent)
+    if company_id is not None:
+        q = q.filter(AuditEvent.company_id == int(company_id))
+    if actor:
+        q = q.filter(AuditEvent.actor == str(actor))
+    desc = (order or "desc").lower() != "asc"
+    if desc:
+        q = q.order_by(AuditEvent.id.desc())
+    else:
+        q = q.order_by(AuditEvent.id.asc())
+    if cursor:
+        try:
+            import base64, json
+            cur = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+            cid = int(cur.get("id"))
+        except Exception:
+            cid = None
+        if cid:
+            if desc:
+                q = q.filter(AuditEvent.id < cid)
+            else:
+                q = q.filter(AuditEvent.id > cid)
+    rows = q.limit(51).all()
+    has_more = len(rows) > 50
+    raw_items = rows[:50]
+    # Build summarized diff for readability
+    def _flatten(d, prefix=""):
+        out = {}
+        try:
+            it = dict(d or {})
+        except Exception:
+            it = {}
+        for k, v in it.items():
+            key = f"{prefix}.{k}" if prefix else str(k)
+            if isinstance(v, dict):
+                out.update(_flatten(v, key))
+            else:
+                out[key] = v
+        return out
+    items = []
+    for r in raw_items:
+        try:
+            import json as _json
+            old = _json.loads(getattr(r, "old_json", "") or "{}")
+        except Exception:
+            old = {}
+        try:
+            import json as _json
+            new = _json.loads(getattr(r, "new_json", "") or "{}")
+        except Exception:
+            new = {}
+        fo = _flatten(old)
+        fn = _flatten(new)
+        changed = []
+        keys = set(fo.keys()) | set(fn.keys())
+        for k in sorted(keys):
+            ov = fo.get(k, "<none>")
+            nv = fn.get(k, "<none>")
+            if ov != nv:
+                changed.append(f"{k}: {ov} → {nv}")
+        summary = "; ".join(changed[:6]) + (" …" if len(changed) > 6 else "")
+        # Build unified diff for detailed view
+        import difflib
+        import json as _json
+        old_pretty = _json.dumps(old, ensure_ascii=False, indent=2, sort_keys=True)
+        new_pretty = _json.dumps(new, ensure_ascii=False, indent=2, sort_keys=True)
+        diff_lines = list(difflib.unified_diff(old_pretty.splitlines(), new_pretty.splitlines(), fromfile='old', tofile='new', lineterm=''))
+        items.append({
+            "ts": getattr(r, "ts", None),
+            "company_id": getattr(r, "company_id", None),
+            "year": getattr(r, "year", None),
+            "actor": getattr(r, "actor", "admin"),
+            "old_json": getattr(r, "old_json", "{}"),
+            "new_json": getattr(r, "new_json", "{}"),
+            "summary": summary,
+            "diff_lines": diff_lines,
+        })
+    next_cursor = None
+    if has_more and items:
+        last = items[-1]
+        try:
+            import base64, json
+            next_cursor = base64.urlsafe_b64encode(json.dumps({"id": last.id}).encode()).decode()
+        except Exception:
+            next_cursor = None
+    context = _base_context(request)
+    context.update({
+        "events": items,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "filters": {"company_id": company_id, "actor": actor, "order": order or "desc"},
+    })
+    response = templates.TemplateResponse("admin_audit.html", context)
+    return _apply_template_security(request, response)
+
+
+@router.get("/policy-history", response_class=HTMLResponse, name="admin.policy_history")
+def policy_history_page(
+    request: Request,
+    db: Session = Depends(get_db),
+    company_id: int | None = None,
+    company_slug: str | None = None,
+    year: int | None = None,
+    cursor: str | None = None,
+    order: str | None = None,
+):
+    if not _is_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    # Resolve company by slug when provided
+    if company_id is None and company_slug:
+        comp = db.query(Company).filter(Company.slug == str(company_slug).strip().lower()).first()
+        if comp:
+            company_id = int(comp.id)
+
+    q = db.query(PolicySettingHistory)
+    if company_id is not None:
+        q = q.filter(PolicySettingHistory.company_id == int(company_id))
+    if year is not None:
+        q = q.filter(PolicySettingHistory.year == int(year))
+    desc = (order or "desc").lower() != "asc"
+    if desc:
+        q = q.order_by(PolicySettingHistory.ts.desc(), PolicySettingHistory.id.desc())
+    else:
+        q = q.order_by(PolicySettingHistory.ts.asc(), PolicySettingHistory.id.asc())
+    if cursor:
+        try:
+            import base64, json
+            cur = json.loads(base64.urlsafe_b64decode(cursor.encode()).decode())
+            cid = int(cur.get("id"))
+        except Exception:
+            cid = None
+        if cid:
+            if desc:
+                q = q.filter(PolicySettingHistory.id < cid)
+            else:
+                q = q.filter(PolicySettingHistory.id > cid)
+    rows = q.limit(51).all()
+    has_more = len(rows) > 50
+    items = rows[:50]
+    next_cursor = None
+    if has_more and raw_items:
+        try:
+            import base64, json
+            next_cursor = base64.urlsafe_b64encode(json.dumps({"id": raw_items[-1].id}).encode()).decode()
+        except Exception:
+            next_cursor = None
+    # Build filter options
+    # Companies appearing in history (id->slug)
+    comp_rows = (
+        db.query(PolicySettingHistory.company_id, Company.slug)
+        .outerjoin(Company, Company.id == PolicySettingHistory.company_id)
+        .distinct()
+        .all()
+    )
+    company_options = []
+    for cid, slug in comp_rows:
+        if cid is None:
+            continue
+        label = slug or f"company:{cid}"
+        company_options.append({"id": int(cid), "label": label})
+    # Year options
+    year_rows = db.query(PolicySettingHistory.year).distinct().all()
+    year_options = sorted({int(y[0]) for y in year_rows}, reverse=True)
+
+    context = _base_context(request)
+    context.update({
+        "items": items,
+        "has_more": has_more,
+        "next_cursor": next_cursor,
+        "filters": {"company_id": company_id, "company_slug": company_slug, "year": year, "order": order or "desc"},
+        "company_options": company_options,
+        "year_options": year_options,
+    })
+    response = templates.TemplateResponse("admin_policy_history.html", context)
+    return _apply_template_security(request, response)

@@ -2,13 +2,12 @@
 {% block content %}
 <div class="center">
   <div class="kicker">ADMIN</div>
-  <h1>관리자 로그인</h1>
-  <form method="post" action="{{ url_for('admin.login_post') }}" class="card form" data-local="1">
+  <h1 id="adminLoginTitle" data-i18n="admin.login.title">관리자 로그인</h1>
+  <form method="post" action="{{ url_for('admin.login_post') }}" class="card form" data-local="1" aria-labelledby="adminLoginTitle">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>비밀번호
-      <input type="password" name="password" placeholder="관리자 비밀번호" required>
-    </label>
-    <button type="submit" class="primary">로그인</button>
+    <label for="adminPassword" data-i18n="admin.login.password_label">비밀번호</label>
+      <input id="adminPassword" type="password" name="password" placeholder="관리자 비밀번호" required aria-required="true" data-i18n-placeholder="admin.login.password_placeholder">
+    <button type="submit" class="primary" aria-label="로그인" data-i18n="admin.login.submit">로그인</button>
     <p class="hint">환경변수 <code>ADMIN_PASSWORD</code> 로 비밀번호를 설정하세요.</p>
   </form>
 </div>

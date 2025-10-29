@@ -48,6 +48,15 @@ def ensure_token_key(session: Session, company: Company) -> None:
     company.token_key = secrets.token_hex(16)
     session.commit()
 
+def rotate_company_token_key(session: Session, company: Company) -> str:
+    """Rotate company's token key to immediately revoke existing tokens.
+
+    Returns the new key (not exposed to clients; only for internal auditing/tests).
+    """
+    company.token_key = secrets.token_hex(16)
+    session.commit()
+    return company.token_key
+
 
 def find_company_by_slug(session: Session, slug: str) -> Company | None:
     return companies_repo.get_by_slug(session, slug)

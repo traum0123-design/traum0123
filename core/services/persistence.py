@@ -6,6 +6,7 @@ from typing import Dict, List
 from sqlalchemy.orm import Session
 
 from core.models import MonthlyPayroll, MonthlyPayrollRow
+from core.utils.pii import encrypt_ssn, mask_ssn
 from core.utils.dates import parse_date_flex
 
 
@@ -31,7 +32,7 @@ def _build_row(payroll: MonthlyPayroll, row: Dict) -> MonthlyPayrollRow:
         company_id=payroll.company_id,
         employee_code=_to_str(row.get("사원코드")),
         employee_name=_to_str(row.get("사원명")),
-        employee_ssn=_to_str(row.get("주민등록번호")),
+        employee_ssn=_store_ssn(_to_str(row.get("주민등록번호"))),
         hire_date=hire_date,
         leave_date=leave_date,
         leave_start_date=leave_start,
@@ -60,6 +61,16 @@ def _build_row(payroll: MonthlyPayroll, row: Dict) -> MonthlyPayrollRow:
 
 def _to_str(value) -> str:
     return str(value or "").strip()
+
+
+def _store_ssn(ssn: str) -> str:
+    """Encrypt SSN when possible; otherwise store masked."""
+    s = (ssn or "").strip()
+    if not s:
+        return ""
+    enc = encrypt_ssn(s)
+    # encrypt_ssn falls back to mask when crypto/KEY unavailable
+    return enc if enc.startswith("enc:") else mask_ssn(s)
 
 
 def _to_int(value) -> int | None:

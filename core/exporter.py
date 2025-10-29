@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import datetime as dt
 from io import BytesIO
+import tempfile
 from collections.abc import Iterable
 from xml.etree import ElementTree as ET
 from zipfile import ZipFile
@@ -10,6 +11,7 @@ from openpyxl import Workbook
 from openpyxl.styles import Alignment, Border, Font, PatternFill, Side
 
 from .schema import DEFAULT_COLUMNS  # re-exported default columns for consumers
+from core.services.calculation import proration_factor_for_month
 
 
 __all__ = [
@@ -234,20 +236,12 @@ def build_salesmap_workbook_stream(
         return (e - s).days + 1
 
     def proration_factor(r: dict) -> tuple[int, int]:
-        ms, me = month_range_for_row(r)
-        total = (me - ms).days + 1
-        join = parse_date_flex(r.get("입사일"))
-        leave = parse_date_flex(r.get("퇴사일"))
-        act_s = max(ms, join) if join else ms
-        act_e = min(me, leave) if leave else me
-        if act_e < act_s:
-            return 0, total
-        days = (act_e - act_s).days + 1
-        leave_s = parse_date_flex(r.get("휴직일"))
-        leave_e = parse_date_flex(r.get("휴직종료일")) or me if leave_s else None
-        if leave_s:
-            d = overlap_days(act_s, act_e, max(ms, leave_s), min(me, leave_e))
-            days = max(0, days - d)
+        # Delegate to standardized helper (keeps legacy behavior via month_range)
+        days, total = proration_factor_for_month({
+            **r,
+            "월 시작일": r.get("월 시작일") or ms,
+            "월 말일": r.get("월 말일") or me,
+        }, year=year, month=month)
         return days, total
 
     def get_num(row: dict, field: str) -> int:
@@ -280,7 +274,178 @@ def build_salesmap_workbook_stream(
             if "상여" in str(lbl):
                 val = base
             else:
-                val = int(base * factor)
+                # Avoid floating rounding drift by using integer math when possible
+                val = (base * pay_days) // tot_days if tot_days > 0 else 0
+            earn_vals.append(val)
+            earn_sums[idx] += val
+        earn_total = sum(earn_vals)
+        allow_total_sum += earn_total
+        deduct_vals = []
+        for idx, (f, _lbl) in enumerate(deduct_fields):
+            v = get_num(r, f)
+            deduct_vals.append(v)
+            deduct_sums[idx] += v
+        deduct_total = sum(deduct_vals)
+        deduct_total_sum += deduct_total
+        net = earn_total - deduct_total
+        # Mask sensitive SSN in export (간단 마스킹, 마지막 4자리만 표시)
+        def _mask_ssn(s: str) -> str:
+            try:
+                digits = ''.join([c for c in s if c.isdigit()])
+                if len(digits) >= 7:
+                    return f"***-**-{digits[-4:]}"
+            except Exception:
+                pass
+            return s if s else ''
+        if len(lvals) >= 3:
+            lvals[2] = _mask_ssn(str(lvals[2] or ''))
+        ws.append(lvals + earn_vals + [earn_total] + deduct_vals + [deduct_total, net])
+
+    # Totals row (with a blank spacer row like original builder)
+    if rows:
+        ws.append([])
+        values: list[int | str] = ["합계", "", "", ""]
+        values.extend(earn_sums)
+        values.append(allow_total_sum)
+        values.extend(deduct_sums)
+        values.append(deduct_total_sum)
+        values.append(allow_total_sum - deduct_total_sum)
+        ws.append(values)
+
+    # Watermark row (download context)
+    now = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    try:
+        ws2 = wb.create_sheet(title="메타")
+        ws2.append(["Generated", now])
+        ws2.append(["Company", company_slug])
+        ws2.append(["Period", f"{year}-{month:02d}"])
+    except Exception:
+        pass
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio
+
+
+def build_salesmap_workbook_stream_spooled(
+    *,
+    company_slug: str,
+    year: int,
+    month: int,
+    rows: list[dict],
+    all_columns: Iterable[tuple[str, str, str]],
+    group_prefs: dict[str, str] | None = None,
+    alias_prefs: dict[str, str] | None = None,
+    max_mem_bytes: int = 64 * 1024 * 1024,
+):
+    """Like build_salesmap_workbook_stream but uses SpooledTemporaryFile to cap memory usage.
+
+    Returns a file-like object positioned at 0 suitable for StreamingResponse.
+    """
+    # Reuse the streaming builder to construct the workbook in memory first if small,
+    # but ensure we write into a spooled file to avoid large resident memory.
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="Sheet1")
+
+    # Derive headers/groups identically
+    earn_fields, deduct_fields = _compute_field_groups(rows, all_columns, group_prefs, alias_prefs)
+    left_fixed = ["사원코드", "사원명", "부서", "직급"]
+    earn_labels = [lbl for _, lbl in earn_fields]
+    deduct_labels = [lbl for _, lbl in deduct_fields]
+    row1 = (
+        left_fixed[:]
+        + ([] if not earn_labels else ["수당"] + [""] * (len(earn_labels) - 1))
+        + ["지급액계"]
+        + ([] if not deduct_labels else [""] * (len(deduct_labels) - 1) + ["공제"])
+        + ["공제액계", "차인지급액"]
+    )
+    row2 = left_fixed[:] + earn_labels + ["지급액계"] + deduct_labels + ["공제액계", "차인지급액"]
+    ws.append(row1)
+    ws.append(row2)
+
+    import datetime as dt
+    import calendar
+
+    def parse_date_flex(val):
+        if not val:
+            return None
+        if isinstance(val, dt.date):
+            return val
+        s = str(val).strip()
+        try:
+            return dt.date.fromisoformat(s)
+        except Exception:
+            pass
+        import re
+        parts = [p for p in re.split(r"[^0-9]", s) if p]
+        if len(parts) >= 3:
+            try:
+                y, m, d = map(int, parts[:3])
+                return dt.date(y, m, d)
+            except Exception:
+                return None
+        return None
+
+    def month_range_for_row(r: dict):
+        s_val = r.get("월 시작일")
+        e_val = r.get("월 말일")
+        s_date = parse_date_flex(s_val)
+        e_date = parse_date_flex(e_val)
+        if not s_date or not e_date or s_date > e_date:
+            first = dt.date(year, month, 1)
+            last = dt.date(year, month, calendar.monthrange(year, month)[1])
+            return first, last
+        return s_date, e_date
+
+    def overlap_days(a1: dt.date, a2: dt.date, b1: dt.date, b2: dt.date) -> int:
+        s = max(a1, b1)
+        e = min(a2, b2)
+        if e < s:
+            return 0
+        return (e - s).days + 1
+
+    def proration_factor(r: dict) -> tuple[int, int]:
+        ms, me = month_range_for_row(r)
+        total = (me - ms).days + 1
+        join = parse_date_flex(r.get("입사일"))
+        leave = parse_date_flex(r.get("퇴사일"))
+        act_s = max(ms, join) if join else ms
+        act_e = min(me, leave) if leave else me
+        if act_e < act_s:
+            return 0, total
+        days = (act_e - act_s).days + 1
+        leave_s = parse_date_flex(r.get("휴직일"))
+        leave_e = parse_date_flex(r.get("휴직종료일")) or me if leave_s else None
+        if leave_s:
+            d = overlap_days(act_s, act_e, max(ms, leave_s), min(me, leave_e))
+            days = max(0, days - d)
+        return days, total
+
+    def get_num(row: dict, field: str) -> int:
+        try:
+            val = row.get(field, 0)
+            if val in (None, ""):
+                return 0
+            return int(float(str(val).replace(",", "").strip()))
+        except Exception:
+            return 0
+
+    earn_sums = [0 for _ in earn_labels]
+    deduct_sums = [0 for _ in deduct_labels]
+    allow_total_sum = 0
+    deduct_total_sum = 0
+
+    for r in rows:
+        lvals = [r.get("사원코드", ""), r.get("사원명", ""), r.get("부서", ""), r.get("직급", "")]
+        pay_days, tot_days = proration_factor(r)
+        factor = (pay_days / tot_days) if tot_days > 0 else 0.0
+        earn_vals = []
+        for idx, (f, lbl) in enumerate(earn_fields):
+            base = get_num(r, f)
+            if "상여" in str(lbl):
+                val = base
+            else:
+                val = (base * pay_days) // tot_days if tot_days > 0 else 0
             earn_vals.append(val)
             earn_sums[idx] += val
         earn_total = sum(earn_vals)
@@ -295,7 +460,6 @@ def build_salesmap_workbook_stream(
         net = earn_total - deduct_total
         ws.append(lvals + earn_vals + [earn_total] + deduct_vals + [deduct_total, net])
 
-    # Totals row (with a blank spacer row like original builder)
     if rows:
         ws.append([])
         values: list[int | str] = ["합계", "", "", ""]
@@ -306,10 +470,10 @@ def build_salesmap_workbook_stream(
         values.append(allow_total_sum - deduct_total_sum)
         ws.append(values)
 
-    bio = BytesIO()
-    wb.save(bio)
-    bio.seek(0)
-    return bio
+    f = tempfile.SpooledTemporaryFile(max_size=max_mem_bytes)
+    wb.save(f)
+    f.seek(0)
+    return f
 
 
 def _normalize_label_text(label: str) -> str:
@@ -543,7 +707,7 @@ def build_salesmap_workbook(
             if "상여" in str(lbl):
                 earn_vals.append(base)
             else:
-                earn_vals.append(int(base * factor))
+                earn_vals.append((base * pay_days) // tot_days if tot_days > 0 else 0)
         earn_total = sum(earn_vals)
         deduct_vals = [get_num(r, f) for f, _ in deduct_fields]
         deduct_total = sum(deduct_vals)

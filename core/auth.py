@@ -4,6 +4,7 @@ import base64
 import hmac
 import json
 import time
+import uuid
 from hashlib import sha256
 from typing import Any, Optional
 
@@ -17,7 +18,7 @@ def _b64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(s.encode())
 
 
-def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: bool = False, ttl_seconds: int = 2 * 60 * 60, key: str | None = None) -> str:
+def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: bool = False, ttl_seconds: int = 2 * 60 * 60, key: str | None = None, roles: list[str] | None = None) -> str:
     now = int(time.time())
     payload = {
         "cid": int(company_id),
@@ -28,6 +29,8 @@ def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: boo
         "typ": "company",
         "ver": 1,
     }
+    if roles:
+        payload["roles"] = list(roles)
     if key:
         payload["key"] = str(key)
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
@@ -61,13 +64,15 @@ def verify_company_token(secret: str, token: str) -> dict[str, Any] | None:
     return payload
 
 
-def make_admin_token(secret: str, *, ttl_seconds: int = 2 * 60 * 60) -> str:
+def make_admin_token(secret: str, *, ttl_seconds: int = 2 * 60 * 60, roles: list[str] | None = None) -> str:
     now = int(time.time())
     payload = {
         "typ": "admin",
         "iat": now,
         "exp": now + int(ttl_seconds),
         "ver": 1,
+        "jti": uuid.uuid4().hex,
+        "roles": roles or ["admin"],
     }
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     sig = hmac.new(secret.encode(), body, sha256).digest()

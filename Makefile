@@ -60,3 +60,17 @@ compose-down:
 precommit:
 	pre-commit install
 	pre-commit run --all-files
+
+# --- Developer convenience ---
+.PHONY: dev-setup dev-run dev
+
+dev-setup:
+	python scripts/build_static.py
+	alembic upgrade head
+	PYTHONPATH=. python scripts/manage.py seed-demo || true
+
+dev-run:
+	uvicorn app.main:app --reload
+
+dev:
+	make dev-setup && make dev-run

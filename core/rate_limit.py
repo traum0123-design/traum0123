@@ -41,13 +41,21 @@ class InMemoryBackend:
 
 
 class RedisBackend:
-    """Redis-backed rate limiter (shared across processes)."""
+    """Redis-backed rate limiter (shared across processes).
 
-    def __init__(self, url: str) -> None:
+    fail_policy:
+      - 'open'   → on Redis error, allow traffic (no limiting)
+      - 'closed' → on Redis error, block traffic (treat as exceeded)
+      - 'memory' → on Redis error, fallback to in-proc memory backend
+    """
+
+    def __init__(self, url: str, fail_policy: str = "open", fallback: _Backend | None = None) -> None:
         from redis import Redis  # type: ignore
 
         self._client: Redis = Redis.from_url(url, decode_responses=True)
         self._prefix = "payroll:admin:rl:"
+        self._fail_policy = fail_policy
+        self._fallback = fallback or InMemoryBackend()
 
     def _full_key(self, key: str) -> str:
         return f"{self._prefix}{key}"
@@ -55,16 +63,35 @@ class RedisBackend:
     def increment(self, key: str, window_seconds: int) -> int:
         now = time.time()
         k = self._full_key(key)
-        pipe = self._client.pipeline()
-        pipe.zremrangebyscore(k, "-inf", now - window_seconds)
-        pipe.zadd(k, {str(now): now})
-        pipe.zcard(k)
-        pipe.expire(k, window_seconds)
-        _, _, count, _ = pipe.execute()
-        return int(count)
+        try:
+            pipe = self._client.pipeline()
+            pipe.zremrangebyscore(k, "-inf", now - window_seconds)
+            pipe.zadd(k, {str(now): now})
+            pipe.zcard(k)
+            pipe.expire(k, window_seconds)
+            _, _, count, _ = pipe.execute()
+            return int(count)
+        except Exception as exc:
+            policy = self._fail_policy
+            logger.error("Redis rate limit error (%s): %s", policy, exc)
+            if policy == "open":
+                # Fail-open: behave as first hit in window
+                return 1
+            if policy == "closed":
+                # Fail-closed: force as exceeded
+                return 10**9
+            # memory fallback
+            return self._fallback.increment(key, window_seconds)
 
     def reset(self, key: str) -> None:
-        self._client.delete(self._full_key(key))
+        try:
+            self._client.delete(self._full_key(key))
+        except Exception as exc:
+            if self._fail_policy == "memory":
+                logger.warning("Redis reset failed; using memory fallback: %s", exc)
+                self._fallback.reset(key)
+            else:
+                logger.warning("Redis reset failed (%s): %s", self._fail_policy, exc)
 
 
 class RateLimiter:
@@ -97,7 +124,9 @@ def _build_backend() -> _Backend:
         if not url:
             raise RuntimeError("ADMIN_RATE_LIMIT_REDIS_URL (또는 REDIS_URL)이 설정되어야 Redis rate limit 백엔드를 사용할 수 있습니다.")
         try:
-            return RedisBackend(url)
+            policy = settings.admin_rate_limit_redis_policy
+            fb = InMemoryBackend() if policy == "memory" else None
+            return RedisBackend(url, fail_policy=policy, fallback=fb)
         except Exception as exc:
             raise RuntimeError(f"Redis 백엔드 초기화 실패: {exc}") from exc
     if backend == "memory":

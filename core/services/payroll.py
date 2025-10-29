@@ -192,23 +192,39 @@ def load_field_prefs(session: Session, company: Company):
     return group_map, alias_map, exempt_map, include_map
 
 
-def compute_withholding_tax(
-    session: Session,
-    year: int,
-    dependents: int,
-    wage: int,
-) -> int:
-    row = (
-        session.query(WithholdingCell)
-        .filter(
-            WithholdingCell.year == year,
-            WithholdingCell.dependents == dependents,
-            WithholdingCell.wage <= wage,
-        )
-        .order_by(WithholdingCell.wage.desc())
-        .first()
+_WH_CACHE: dict[tuple[int, int], list[tuple[int, int]]] = {}
+_WH_CACHE_TS: dict[tuple[int, int], float] = {}
+
+
+def _get_withholding_rows_cached(session: Session, year: int, dep: int, *, ttl: int = 300) -> list[tuple[int, int]]:
+    import time
+    key = (int(year), int(dep))
+    now = time.time()
+    if key in _WH_CACHE and (now - _WH_CACHE_TS.get(key, 0)) < ttl:
+        return _WH_CACHE[key]
+    rows = (
+        session.query(WithholdingCell.wage, WithholdingCell.tax)
+        .filter(WithholdingCell.year == year, WithholdingCell.dependents == dep)
+        .order_by(WithholdingCell.wage.asc())
+        .all()
     )
-    return int(row.tax) if row else 0
+    out = [(int(w), int(t)) for (w, t) in rows]
+    _WH_CACHE[key] = out
+    _WH_CACHE_TS[key] = now
+    return out
+
+
+def compute_withholding_tax(session: Session, year: int, dependents: int, wage: int) -> int:
+    rows = _get_withholding_rows_cached(session, int(year), int(dependents))
+    target = int(wage)
+    # Find the largest wage <= target
+    lo_tax = 0
+    for w, t in rows:
+        if w <= target:
+            lo_tax = t
+        else:
+            break
+    return int(lo_tax)
 
 
 def compute_deductions(

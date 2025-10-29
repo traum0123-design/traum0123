@@ -2,13 +2,20 @@
 {% block content %}
 <h1>회사 관리</h1>
 
+<div class="flex-end">
+  <a class="btn" href="{{ url_for('admin.audit') }}" aria-label="감사 로그 보기">감사 로그</a>
+  <a class="btn" href="{{ url_for('admin.policy_history') }}" aria-label="정책 변경 이력">정책 이력</a>
+  </div>
+
 <div class="card">
   <h2>신규 회사 추가</h2>
-  <form method="post" action="{{ url_for('admin.company_new') }}" class="form">
+  <form method="post" action="{{ url_for('admin.company_new') }}" class="form" aria-label="신규 회사 추가">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
-    <label>회사명<input type="text" name="name" placeholder="예: ㈜아이템" required></label>
-    <label>슬러그<input type="text" name="slug" placeholder="예: acme" required></label>
-    <button type="submit" class="primary">추가</button>
+    <label for="newCompanyName">회사명</label>
+    <input id="newCompanyName" type="text" name="name" placeholder="예: ㈜아이템" required aria-required="true">
+    <label for="newCompanySlug">슬러그</label>
+    <input id="newCompanySlug" type="text" name="slug" placeholder="예: acme" required aria-required="true">
+    <button type="submit" class="primary" aria-label="회사 추가">추가</button>
   </form>
   <p class="hint">생성 시 회사 전용 접속코드가 1회 표시됩니다.</p>
   </div>
@@ -45,14 +52,14 @@
   </div>
 </div>
 
-<div class="card" style="margin-top:12px;">
+<div class="card mt-12">
   <h2>세금 · 간이세액표</h2>
   <p class="muted">국세청 간이세액표(연도별)를 업로드하고 샘플 조회로 검증할 수 있습니다.</p>
-  <div style="display:flex; justify-content:flex-end;">
+  <div class="flex-end">
     <a class="btn" href="{{ url_for('admin.index') }}#withholding">간이세액표 관리 이동</a>
   </div>
   {% if wh_counts %}
-  <ul style="margin-top:8px;">
+  <ul class="mt-8">
     {% for info in wh_counts %}
       <li>{{ info.year }}년: {{ info.count }}건</li>
     {% endfor %}

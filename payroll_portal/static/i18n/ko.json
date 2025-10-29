@@ -1,0 +1,6 @@
+{
+  "admin.login.title": "관리자 로그인",
+  "admin.login.password_label": "비밀번호",
+  "admin.login.password_placeholder": "관리자 비밀번호",
+  "admin.login.submit": "로그인"
+}

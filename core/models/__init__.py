@@ -135,3 +135,115 @@ class MonthlyPayrollRow(Base):
     __table_args__ = (
         UniqueConstraint("payroll_id", "employee_code", name="uq_payroll_row_employee"),
     )
+
+
+class IdempotencyRecord(Base):
+    __tablename__ = "idempotency_records"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    key: Mapped[str] = mapped_column(String(128), nullable=False)
+    method: Mapped[str] = mapped_column(String(10), nullable=False)
+    path: Mapped[str] = mapped_column(String(255), nullable=False)
+    body_hash: Mapped[str] = mapped_column(String(64), nullable=False)
+    company_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    status_code: Mapped[int] = mapped_column(Integer, default=200)
+    response_json: Mapped[str] = mapped_column(Text, default="")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("key", "method", "path", name="uq_idem_key_method_path"),
+        Index("ix_idem_created_at", "created_at"),
+    )
+
+
+class AuditEvent(Base):
+    __tablename__ = "audit_events"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    actor: Mapped[str] = mapped_column(String(120))  # e.g., "admin" or "company:acme"
+    company_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    action: Mapped[str] = mapped_column(String(80))  # e.g., "login_success", "export_download"
+    resource: Mapped[str] = mapped_column(String(255), default="")  # e.g., path or logical resource
+    ip: Mapped[str] = mapped_column(String(64), default="")
+    ua: Mapped[str] = mapped_column(String(255), default="")
+    result: Mapped[str] = mapped_column(String(40), default="ok")  # ok/fail/denied
+    meta_json: Mapped[str] = mapped_column(Text, default="")
+
+    __table_args__ = (
+        Index("ix_audit_ts_desc", "ts"),
+        Index("ix_audit_company_ts_desc", "company_id", "ts"),
+    )
+
+
+class RevokedToken(Base):
+    __tablename__ = "revoked_tokens"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    typ: Mapped[str] = mapped_column(String(20), nullable=False)  # e.g., 'admin'
+    jti: Mapped[str] = mapped_column(String(64), nullable=False, unique=True)
+    exp: Mapped[dt.datetime | None] = mapped_column(DateTime(timezone=True))
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        Index("ix_revoked_typ_jti", "typ", "jti"),
+    )
+
+
+class PolicySetting(Base):
+    __tablename__ = "policy_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    policy_json: Mapped[str] = mapped_column(Text, default="{}")
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "year", name="uq_policy_company_year"),
+        Index("ix_policy_company_year", "company_id", "year"),
+    )
+
+
+class PolicySettingHistory(Base):
+    __tablename__ = "policy_settings_history"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    ts: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, index=True)
+    actor: Mapped[str] = mapped_column(String(120))  # e.g., 'admin'
+    company_id: Mapped[int | None] = mapped_column(Integer, nullable=True, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    old_json: Mapped[str] = mapped_column(Text, default="{}")
+    new_json: Mapped[str] = mapped_column(Text, default="{}")
+
+    __table_args__ = (
+        Index("ix_policy_hist_company_year_ts", "company_id", "year", "ts"),
+    )
+
+
+class UISetting(Base):
+    __tablename__ = "ui_settings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    key: Mapped[str] = mapped_column(String(120), nullable=False)
+    value_json: Mapped[str] = mapped_column(Text, default="{}")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "key", name="uq_ui_setting_company_key"),
+        Index("ix_ui_settings_company_key", "company_id", "key"),
+    )
+
+
+class TokenFence(Base):
+    __tablename__ = "token_fences"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    typ: Mapped[str] = mapped_column(String(20), nullable=False)
+    revoked_before_iat: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
+
+    __table_args__ = (
+        UniqueConstraint("typ", name="uq_token_fence_typ"),
+    )

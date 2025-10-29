@@ -2,20 +2,21 @@
 {% block content %}
 <div class="kicker">PAYROLL</div>
 <h1>{{ company_name }} · {{ year }}년 {{ '%02d'|format(month) }}월 급여입력</h1>
-<style>
-  /* 주민등록번호 검증 실패 표시 */
-  input.invalid-ssn {
-    border-color: #DC2626 !important;
-    background-color: #FEF2F2 !important;
-  }
-  .badge { display:inline-block; padding:2px 8px; border-radius:999px; font-size:12px; line-height:18px; font-weight:600; }
-  .badge-prorate { background:#EEF2FF; color:#3730A3; border:1px solid #C7D2FE; }
-</style>
+<div class="flex gap-8 my-8">
+  <button type="button" class="btn" data-action="toggleCompact" aria-label="간단 보기 토글">간단 보기(Shift+M)</button>
+  <button type="button" class="btn" data-action="toggleFixedCols" aria-label="고정 열 토글">고정 열(Shift+F)</button>
+  <button type="button" class="btn" data-action="toggleRowDensity" aria-label="행 밀도 토글">행 밀도(Shift+D)</button>
+  <button type="button" class="btn" data-action="resetLayout" aria-label="레이아웃 초기화">레이아웃 초기화</button>
+  <span class="muted">보기 설정은 회사별로 저장됩니다.</span>
+  <div class="flex-1"></div>
+  <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
+</div>
+{# Moved inline styles to styles.css to satisfy strict CSP #}
 
   <div class="toolbar">
     <div class="toolbar-group">
       <a class="btn" href="{{ url_for('portal.home', slug=slug) }}">월 변경</a>
-      <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
+      {# 위쪽 공용 툴바로 이동됨 #}
       
         <button type="button" class="btn" data-action="openPasteModal" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
   </div>
@@ -23,16 +24,16 @@
     {% if not is_closed %}
       <button type="submit" form="payrollForm" class="btn primary">저장</button>
     {% else %}
-      <span style="display:inline-block; margin-left:8px; padding:6px 12px; border-radius:14px; background:#FEE2E2; color:#991B1B; font-weight:600;">마감완료</span>
+      <span class="pill-badge pill-danger">마감완료</span>
     {% endif %}
     {% if is_admin %}
       {% if is_closed %}
-        <form class="js-portal-action" method="post" action="{{ url_for('portal.reopen_payroll', slug=slug, year=year, month=month) }}" style="display:inline; margin-left:8px;">
+        <form class="js-portal-action d-inline ml-8" method="post" action="{{ url_for('portal.reopen_payroll', slug=slug, year=year, month=month) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn ghost">마감 해제</button>
         </form>
       {% else %}
-        <form class="js-portal-action" method="post" action="{{ url_for('portal.close_payroll', slug=slug, year=year, month=month) }}" style="display:inline; margin-left:8px;">
+        <form class="js-portal-action d-inline ml-8" method="post" action="{{ url_for('portal.close_payroll', slug=slug, year=year, month=month) }}">
           <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
           <button type="submit" class="btn danger">마감</button>
         </form>
@@ -42,19 +43,19 @@
 </div>
 
 <!-- Prorate Config Modal (일할계산 관리) -->
-<div id="prorateConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:66; align-items:center; justify-content:center;">
-  <div class="card" style="max-width:700px; width:90%;">
+<div id="prorateConfigModal" class="modal">
+  <div class="card card-narrow">
     <h2>일할계산 관리</h2>
     <p class="muted">어떤 급여 항목에 일할계산을 적용할지 선택하세요. 기본값: 기본급, 식대, 자가운전보조금.</p>
-    <div class="modal-scroll" style="max-height: calc(100vh - 260px); overflow:auto; border:1px solid var(--border); border-radius:10px; padding:8px; margin:8px 0; background:#fff;">
-      <table class="table" style="width:100%;">
+    <div class="modal-scroll">
+      <table class="table w-100">
         <thead>
-          <tr><th>항목</th><th style="width:120px;">일할 적용</th></tr>
+          <tr><th>항목</th><th class="w-120">일할 적용</th></tr>
         </thead>
         <tbody id="prorateConfigBody"></tbody>
       </table>
     </div>
-    <div class="modal-actions" style="display:flex; gap:8px; justify-content:flex-end;">
+    <div class="modal-actions">
       <button type="button" data-action="closeProrateConfig">취소</button>
       <button type="button" class="primary" data-action="saveProrateConfig">저장</button>
     </div>
@@ -84,35 +85,35 @@
 
 <!-- Split view only: 표 보기 옵션 제거 -->
 
-<div id="splitView" class="card" style="display:block; padding:12px;">
+<div id="splitView" class="card d-block p-12">
   <div class="split-grid">
     
     <!-- Left: employee list -->
     <div class="panel">
       <div class="panel-head">
         <strong>사원 목록</strong>
-        <div style="flex:1"></div>
-        <input type="search" id="splitSearch" placeholder="사원명/코드 검색" style="max-width:220px">
+        <div class="flex-1"></div>
+        <input type="search" id="splitSearch" class="maxw-220" placeholder="사원명/코드 검색">
         {% if not is_closed %}
-        <button type="button" class="btn primary" style="margin-left:8px" data-action="prefillFromPrev">전월 급여 복사</button>
+        <button type="button" class="btn primary ml-8" data-action="prefillFromPrev">전월 급여 복사</button>
         <button type="button" class="btn" data-action="addRowGlobal">사원 추가</button>
         {% endif %}
       </div>
       <div class="panel-body">
         <table class="list">
           <colgroup id="empColgroup">
-            <col style="width:52px">
-            <col data-col="1" style="width:120px">
-            <col data-col="2" style="width:80px">
-            <col data-col="3" style="width:180px">
-            <col data-col="4" style="width:110px">
-            <col data-col="5" style="width:110px">
-            <col data-col="6" style="width:110px">
-            <col data-col="7" style="width:110px">
+            <col class="w-52">
+            <col data-col="1" class="w-120">
+            <col data-col="2" class="w-80">
+            <col data-col="3" class="w-180">
+            <col data-col="4" class="w-110">
+            <col data-col="5" class="w-110">
+            <col data-col="6" class="w-110">
+            <col data-col="7" class="w-110">
           </colgroup>
           <thead id="empHead">
             <tr>
-              <th style="width:52px">#</th>
+              <th class="w-52">#</th>
               <th data-col="1" data-field="사원코드">사원코드</th>
               <th data-col="2" data-field="사원명">사원명</th>
               <th data-col="3" data-field="주민등록번호">주민등록번호</th>
@@ -129,7 +130,7 @@
 
     <!-- Middle: earnings -->
     <div class="panel">
-      <div class="panel-head"><strong>급여항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
+      <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
       <div class="panel-body">
         <div id="basicInfo" class="basic-info"></div>
         <table id="earnTable"></table>
@@ -141,13 +142,13 @@
 
     <!-- Right: deductions + summary -->
     <div class="panel">
-      <div class="panel-head"><strong>공제항목</strong><div style="flex:1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
+      <div class="panel-head"><strong>공제항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
       <div class="panel-body">
         <table id="dedTable"></table>
         <div class="summary">
           <div class="row"><span>공제 합계</span><span id="sumDeductions">0</span></div>
           <div class="row total"><span>차인지급액</span><span id="sumNet">0</span></div>
-          <div class="row spacer" style="margin-top:8px; border-top:1px dashed var(--border); padding-top:8px;"></div>
+          <div class="row spacer"></div>
           <div class="row"><span>전직원 지급 합계</span><span id="grandEarnings">0</span></div>
           <div class="row"><span>전직원 공제 합계</span><span id="grandDeductions">0</span></div>
           <div class="row"><span>전직원 차인지급액</span><span id="grandNet">0</span></div>
@@ -174,9 +175,9 @@
           {% elif label in ['각종상환공제','국민연금','건강보험','장기요양보험','고용보험','소득세','지방소득세'] %}{% set group = 'deduct' %}
           {% elif label in ['입사일','퇴사일','휴직일','휴직종료일','수습종료일(90%)','입사일 지남','월 중도입사','월 중도퇴사','퇴사월 지남','휴직중','월 중도휴직','월 중도복직','일할계산여부','근무일수','월 시작일','월 말일','월 총 일수','부양가족수'] %}{% set group = 'status' %}
           {% endif %}
-          <th data-col="{{ loop.index0 }}" data-field="{{ field }}" data-group="{{ group }}" style="position:sticky; top:0;">
+          <th data-col="{{ loop.index0 }}" data-field="{{ field }}" data-group="{{ group }}">
             <span class="col-label">{{ label }}</span>
-            <span class="col-resizer" data-col="{{ loop.index0 }}" data-field="{{ field }}"></span>
+            <span class="col-resizer" data-col="{{ loop.index0 }}" data-field="{{ field }}" role="separator" aria-orientation="vertical" aria-label="열 크기 조절 {{ label }}" tabindex="0"></span>
           </th>
         {% endfor %}
         <th>작업</th>
@@ -2098,17 +2099,17 @@ function gridInputChanged(el){
 </script>
 
 <!-- Proration Modal -->
-<div id="prorationModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:65; align-items:center; justify-content:center;">
-  <div class="card" style="max-width:640px; width:90%;">
+<div id="prorationModal" class="modal">
+  <div class="card card-640">
     <h2>일할계산 반영</h2>
     <p id="prSummary" class="muted">대상 집계 중…</p>
-    <div class="modal-scroll" style="max-height: 40vh; overflow:auto; border:1px solid var(--border); border-radius:10px; padding:8px; margin:8px 0; background:#fff;">
-      <ul id="prSamples" class="muted" style="margin:0; padding-left:18px;"></ul>
-      <p class="hint" style="margin-top:8px;">상여 등 일부 항목은 일할 대상에서 제외됩니다.</p>
+    <div class="modal-scroll-sm">
+      <ul id="prSamples" class="muted m-0 pl-18"></ul>
+      <p class="hint mt-8">상여 등 일부 항목은 일할 대상에서 제외됩니다.</p>
     </div>
-    <div style="display:flex; align-items:center; gap:8px; justify-content:space-between;">
-      <label class="muted" style="display:flex; align-items:center; gap:6px;"><input type="checkbox" id="prNoAsk"> 이번 세션에서 다시 묻지 않기</label>
-      <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <div class="flex items-center gap-8 between">
+      <label class="muted flex items-center gap-6"><input type="checkbox" id="prNoAsk"> 이번 세션에서 다시 묻지 않기</label>
+      <div class="flex-end gap-8">
         <button type="button" data-only="manual" data-action="closeProrationModal">닫기</button>
         <button type="button" class="primary" data-only="manual" data-action="applyProrationManual">적용</button>
         <button type="button" data-only="guard" data-action="closeProrationModal">취소</button>
@@ -2120,11 +2121,11 @@ function gridInputChanged(el){
 </div>
 
 <!-- Row Detail Drawer -->
-<div id="rowDrawer" class="drawer" style="display:none">
+<div id="rowDrawer" class="drawer hidden">
   <div class="drawer-panel">
     <div class="drawer-head">
       <strong>행 자세히 편집</strong>
-      <div style="flex:1"></div>
+      <div class="flex-1"></div>
       <button type="button" class="btn ghost" data-action="closeRowDrawer">닫기</button>
     </div>
     <div id="rowDrawerBody" class="drawer-body form"></div>
@@ -2134,25 +2135,15 @@ function gridInputChanged(el){
     </div>
   </div>
   <div class="drawer-backdrop" data-action="closeRowDrawer"></div>
-  <style>
-    .drawer{ position:fixed; inset:0; z-index:60; }
-    .drawer-panel{ position:absolute; top:0; right:0; width:720px; max-width:96vw; height:100%; background:#fff; border-left:1px solid var(--border); box-shadow:var(--shadow); display:flex; flex-direction:column }
-    .drawer-backdrop{ position:absolute; inset:0; background:rgba(2,6,23,.35); backdrop-filter:blur(2px) }
-    .drawer-head, .drawer-foot{ display:flex; align-items:center; gap:8px; padding:12px; border-bottom:1px solid var(--border) }
-    .drawer-foot{ border-top:1px solid var(--border); border-bottom:none; margin-top:auto; justify-content:flex-end }
-    .drawer-body{ padding:14px; overflow:auto; display:grid; grid-template-columns:1fr 1fr; gap:12px }
-    @media (max-width: 720px){ .drawer-body{ grid-template-columns:1fr; } }
-    .drawer-body label{ font-weight:600 }
-  </style>
 </div>
 
 <!-- Paste Modal -->
-<div id="pasteModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:50; align-items:center; justify-content:center;">
-  <div class="card" style="max-width:720px; width:90%;">
+<div id="pasteModal" class="modal">
+  <div class="card card-720">
     <h2>엑셀 올리기 (필수 컬럼)</h2>
     <p class="muted">엑셀에서 사원코드, 사원명, 월급여, 기본급, 식대, 시간외수당, 연장근로수당, 현장수당, 직급수당, 각종상환공제, 비고 순서로 범위를 복사해 아래에 붙여넣으세요. 없는 컬럼은 건너뜁니다.</p>
-    <textarea id="pasteBox" style="width:100%; height:180px; margin:8px 0; padding:10px; border:1px solid var(--border); border-radius:10px;"></textarea>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <textarea id="pasteBox" class="w-100 h-180 my-8 p-10 border br-10"></textarea>
+    <div class="flex-end gap-8">
       <button type="button" data-action="closePasteModal">취소</button>
       <button type="button" class="primary" data-action="handlePaste">올리기</button>
     </div>
@@ -2160,11 +2151,11 @@ function gridInputChanged(el){
 </div>
 
 <!-- Unsaved changes modal -->
-<div id="unsavedModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:60; align-items:center; justify-content:center;">
-  <div class="card" style="max-width:520px; width:90%;">
+<div id="unsavedModal" class="modal">
+  <div class="card card-520">
     <h2>저장되지 않은 변경사항</h2>
     <p class="muted">현재 입력한 내용이 저장되지 않았습니다. 저장하고 나가시겠습니까?</p>
-    <div style="display:flex; gap:8px; justify-content:flex-end;">
+    <div class="flex-end gap-8">
       <button type="button" data-action="closeUnsavedModal">취소</button>
       <button type="button" class="btn ghost" data-action="leaveWithoutSave">그냥 나가기</button>
       <button type="button" class="primary" data-action="confirmSaveAndExit">저장하고 나가기</button>
@@ -2176,18 +2167,18 @@ function gridInputChanged(el){
 </div>
 
 <!-- Group Config Modal -->
-<div id="groupModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:50; align-items:center; justify-content:center;">
+<div id="groupModal" class="modal">
   <div class="card group-card">
     <h2>항목 구성</h2>
     <p class="muted">숫자 항목을 '급여' 또는 '공제'로 분류하세요. '제외'는 합계에서 빠집니다. 항목명은 여기서 수정 가능합니다.</p>
-    <div style="display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap;">
-      <input id="groupSearch" type="search" placeholder="항목명 검색" style="max-width:260px">
-      <label style="display:flex; align-items:center; gap:6px;"><input id="groupShowHidden" type="checkbox"> 숨김(제외) 포함</label>
-      <div style="flex:1"></div>
-      <div style="display:flex; gap:8px; align-items:center;">
-        <input id="newFieldName" type="text" placeholder="새 항목명" style="width:200px">
-        <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="earn" checked> 급여</label>
-        <label style="display:flex; align-items:center; gap:4px;"><input type="radio" name="newFieldGroup" value="deduct"> 공제</label>
+    <div class="flex gap-8 items-center my-8 flex-wrap">
+      <input id="groupSearch" type="search" class="maxw-260" placeholder="항목명 검색" aria-label="항목명 검색">
+      <label class="flex items-center gap-6"><input id="groupShowHidden" type="checkbox"> 숨김(제외) 포함</label>
+      <div class="flex-1"></div>
+      <div class="flex gap-8 items-center">
+        <input id="newFieldName" type="text" class="w-200" placeholder="새 항목명" aria-label="새 항목명">
+        <label class="flex items-center gap-4"><input type="radio" name="newFieldGroup" value="earn" checked> 급여</label>
+        <label class="flex items-center gap-4"><input type="radio" name="newFieldGroup" value="deduct"> 공제</label>
         <button type="button" class="btn primary" data-action="addExtraField">추가</button>
       </div>
     </div>
@@ -2199,7 +2190,7 @@ function gridInputChanged(el){
             <th class="col-type">급여</th>
             <th class="col-type">공제</th>
             <th class="col-type">제외</th>
-            <th style="width:84px"></th>
+            <th class="w-84"></th>
           </tr>
         </thead>
         <tbody id="groupConfigBody"></tbody>
@@ -2213,21 +2204,21 @@ function gridInputChanged(el){
 </div>
 
 <!-- Calc Config Modal (Insurance base selection) -->
-<div id="calcConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.5); z-index:60; align-items:center; justify-content:center;">
-  <div class="card group-card calc-card" style="max-width:980px; width:96%;">
+<div id="calcConfigModal" class="modal">
+  <div class="card group-card calc-card">
     <h2>공제 계산방법</h2>
     <p class="muted">국민연금은 사원별 ‘기준보수월액’으로 계산됩니다. 건강보험/고용보험에 포함할 급여항목을 선택하세요.</p>
-    <div style="display:flex; gap:8px; align-items:center; margin:8px 0; flex-wrap:wrap;">
-      <input id="calcSearch" type="search" placeholder="항목명 검색" style="max-width:260px">
-      <div style="flex:1"></div>
+    <div class="flex gap-8 items-center my-8 flex-wrap">
+      <input id="calcSearch" type="search" placeholder="항목명 검색" class="maxw-260" aria-label="항목명 검색">
+      <div class="flex-1"></div>
       <button type="button" class="btn" id="btnNhAll">건강보험 전체선택</button>
       <button type="button" class="btn ghost" id="btnNhNone">건강보험 해제</button>
-      <span style="width:1px; height:22px; background:#E2E8F0;"></span>
+      <span class="divider-v" aria-hidden="true"></span>
       <button type="button" class="btn" id="btnEiAll">고용보험 전체선택</button>
       <button type="button" class="btn ghost" id="btnEiNone">고용보험 해제</button>
     </div>
-    <div class="modal-scroll" style="max-height: calc(100vh - 220px); overflow:auto;">
-      <table class="group-table calc-table" style="width:100%;">
+    <div class="modal-scroll-md">
+      <table class="group-table calc-table">
         <thead>
           <tr>
             <th class="col-name">항목명</th>
@@ -2244,25 +2235,15 @@ function gridInputChanged(el){
       <button type="button" class="primary" data-action="saveCalcConfig">저장</button>
     </div>
   </div>
-  <style>
-    .calc-card h2{ font-size:18px; }
-    .calc-table thead th{ position:sticky; top:0; background:#F8FAFC; z-index:1; }
-    .calc-table td, .calc-table th{ padding:10px; }
-    .calc-table tbody tr:nth-child(odd){ background:#FAFAFA; }
-    .calc-table .col-name{ text-align:left; }
-    .calc-table .col-type{ width:160px; text-align:center; white-space:nowrap; }
-    .calc-table input[type=checkbox]{ width:18px; height:18px; }
-    .group-card .muted{ color:#64748B; font-size:12px; }
-  </style>
 </div>
 
 <!-- Exempt Config Modal (비과세 설정) -->
-<div id="exemptConfigModal" class="modal" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,.4); z-index:60; align-items:center; justify-content:center;">
-  <div class="card group-card" style="max-width:780px; width:94%;">
+<div id="exemptConfigModal" class="modal">
+  <div class="card group-card card-780">
     <h2>비과세 설정</h2>
     <p class="muted">급여항목별 비과세 적용 여부와 한도(원) 금액을 설정하세요. 기본값은 식대·자가운전보조금 각 200,000원입니다.</p>
     <div class="modal-scroll">
-      <table class="group-table" style="width:100%;">
+      <table class="group-table">
         <thead>
           <tr>
             <th class="col-name">항목명</th>
