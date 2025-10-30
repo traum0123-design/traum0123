@@ -316,7 +316,7 @@ def audit_page(
     rows = q.limit(51).all()
     has_more = len(rows) > 50
     raw_items = rows[:50]
-    # Build summarized diff for readability
+    # Build lightweight entries for template consumption
     def _flatten(d, prefix=""):
         out = {}
         try:
@@ -332,50 +332,41 @@ def audit_page(
         return out
     items = []
     for r in raw_items:
+        # Parse meta for optional summary
         try:
             import json as _json
-            old = _json.loads(getattr(r, "old_json", "") or "{}")
+            meta = _json.loads(getattr(r, "meta_json", "") or "{}")
         except Exception:
-            old = {}
-        try:
-            import json as _json
-            new = _json.loads(getattr(r, "new_json", "") or "{}")
-        except Exception:
-            new = {}
-        fo = _flatten(old)
-        fn = _flatten(new)
-        changed = []
-        keys = set(fo.keys()) | set(fn.keys())
-        for k in sorted(keys):
-            ov = fo.get(k, "<none>")
-            nv = fn.get(k, "<none>")
-            if ov != nv:
-                changed.append(f"{k}: {ov} → {nv}")
-        summary = "; ".join(changed[:6]) + (" …" if len(changed) > 6 else "")
-        # Build unified diff for detailed view
-        import difflib
-        import json as _json
-        old_pretty = _json.dumps(old, ensure_ascii=False, indent=2, sort_keys=True)
-        new_pretty = _json.dumps(new, ensure_ascii=False, indent=2, sort_keys=True)
-        diff_lines = list(difflib.unified_diff(old_pretty.splitlines(), new_pretty.splitlines(), fromfile='old', tofile='new', lineterm=''))
+            meta = {}
+        flat = _flatten(meta)
+        parts = []
+        for k in sorted(flat.keys()):
+            v = flat.get(k)
+            if isinstance(v, (dict, list)):
+                continue
+            parts.append(f"{k}={v}")
+        summary = "; ".join(parts[:6]) + (" …" if len(parts) > 6 else "")
         items.append({
+            "id": getattr(r, "id", None),
             "ts": getattr(r, "ts", None),
             "company_id": getattr(r, "company_id", None),
-            "year": getattr(r, "year", None),
-            "actor": getattr(r, "actor", "admin"),
-            "old_json": getattr(r, "old_json", "{}"),
-            "new_json": getattr(r, "new_json", "{}"),
+            "actor": getattr(r, "actor", ""),
+            "action": getattr(r, "action", ""),
+            "resource": getattr(r, "resource", ""),
+            "result": getattr(r, "result", ""),
+            "ip": getattr(r, "ip", ""),
+            "ua": getattr(r, "ua", ""),
             "summary": summary,
-            "diff_lines": diff_lines,
         })
     next_cursor = None
-    if has_more and items:
-        last = items[-1]
-        try:
-            import base64, json
-            next_cursor = base64.urlsafe_b64encode(json.dumps({"id": last.id}).encode()).decode()
-        except Exception:
-            next_cursor = None
+    if has_more and raw_items:
+        last_id = getattr(raw_items[-1], "id", None)
+        if last_id is not None:
+            try:
+                import base64, json
+                next_cursor = base64.urlsafe_b64encode(json.dumps({"id": int(last_id)}).encode()).decode()
+            except Exception:
+                next_cursor = None
     context = _base_context(request)
     context.update({
         "events": items,
