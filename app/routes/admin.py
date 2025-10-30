@@ -90,6 +90,27 @@ def login_action(request: Request, password: str = Form(...), csrf_token: str | 
     return response
 
 
+@router.get("/withholding", response_class=HTMLResponse, name="admin.withholding_page")
+def withholding_page(request: Request, db: Session = Depends(get_db)):
+    if not _is_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    from sqlalchemy import func
+    years = db.execute(
+        select(
+            WithholdingCell.year,
+            func.count(),
+            func.min(WithholdingCell.wage),
+            func.max(WithholdingCell.wage),
+        )
+        .group_by(WithholdingCell.year)
+        .order_by(WithholdingCell.year.desc())
+    ).all()
+    context = _base_context(request)
+    context.update({"years": years})
+    response = templates.TemplateResponse("admin_withholding.html", context)
+    return _apply_template_security(request, response)
+
+
 @router.get("/logout", name="admin.logout")
 def admin_logout():
     response = RedirectResponse(url="/admin/login", status_code=303)
@@ -330,6 +351,27 @@ def audit_page(
             else:
                 out[key] = v
         return out
+    # Friendly labels for actions/results
+    ACTION_LABELS = {
+        "login_success": "관리자 로그인 성공",
+        "login_failed": "관리자 로그인 실패",
+        "login_rate_limited": "로그인 시도 제한",
+        "company_access_code_rotated": "회사 접속코드 재발급",
+        "company_token_key_rotated": "토큰 키 회전(강제 로그아웃)",
+        "impersonate_token_issued": "가장 토큰 발급",
+        "export_download": "엑셀 다운로드",
+        "bulk_export_download": "엑셀 일괄 다운로드",
+        "month_opened": "월 마감 해제",
+        "month_closed": "월 마감",
+        "save_payroll": "급여 저장",
+        "company_delete_requested": "회사 삭제 요청",
+        "policy_updated": "정책 변경",
+    }
+    RESULT_LABELS = {
+        "ok": "성공",
+        "fail": "실패",
+        "denied": "거부",
+    }
     items = []
     for r in raw_items:
         # Parse meta for optional summary
@@ -346,14 +388,18 @@ def audit_page(
                 continue
             parts.append(f"{k}={v}")
         summary = "; ".join(parts[:6]) + (" …" if len(parts) > 6 else "")
+        act = getattr(r, "action", "") or ""
+        res = getattr(r, "result", "") or ""
         items.append({
             "id": getattr(r, "id", None),
             "ts": getattr(r, "ts", None),
             "company_id": getattr(r, "company_id", None),
             "actor": getattr(r, "actor", ""),
-            "action": getattr(r, "action", ""),
+            "action": act,
+            "action_label": ACTION_LABELS.get(act, act or "(알 수 없음)"),
             "resource": getattr(r, "resource", ""),
-            "result": getattr(r, "result", ""),
+            "result": res,
+            "result_label": RESULT_LABELS.get(res, res or ""),
             "ip": getattr(r, "ip", ""),
             "ua": getattr(r, "ua", ""),
             "summary": summary,

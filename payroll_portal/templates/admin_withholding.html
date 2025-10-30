@@ -18,7 +18,7 @@
 
 <div class="card">
   <h2>엑셀 업로드</h2>
-  <form method="post" action="{{ url_for('admin.withholding_import') }}" enctype="multipart/form-data" class="form">
+  <form method="post" action="/api/admin/tax/withholding/import" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>연도 <input type="number" name="year" min="2000" max="2100" value="2025" required></label>
     <label>파일 (국세청 간이세액표 XLSX) <input type="file" name="file" accept=".xlsx,.xls" required></label>

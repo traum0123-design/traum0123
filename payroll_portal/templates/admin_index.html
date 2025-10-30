@@ -2,10 +2,11 @@
 {% block content %}
 <h1>회사 관리</h1>
 
-<div class="flex-end">
-  <a class="btn" href="{{ url_for('admin.audit') }}" aria-label="감사 로그 보기">감사 로그</a>
-  <a class="btn" href="{{ url_for('admin.policy_history') }}" aria-label="정책 변경 이력">정책 이력</a>
+  <div class="flex-end">
+    <a class="btn" href="{{ url_for('admin.audit') }}" aria-label="감사 로그 보기">감사 로그</a>
+    <a class="btn" href="{{ url_for('admin.policy_history') }}" aria-label="정책 변경 이력">정책 이력</a>
   <a class="btn" href="{{ url_for('admin.closings') }}" aria-label="월별 마감 현황">마감 현황</a>
+  <a class="btn" href="{{ url_for('admin.withholding_page') }}" aria-label="근로소득 간이세액표 관리">간이세액표 관리 이동</a>
   </div>
 
 <div class="card">
@@ -62,7 +63,7 @@
   <h2>세금 · 간이세액표</h2>
   <p class="muted">국세청 간이세액표(연도별)를 업로드하고 샘플 조회로 검증할 수 있습니다.</p>
   <div class="flex-end">
-    <a class="btn" href="{{ url_for('admin.index') }}#withholding">간이세액표 관리 이동</a>
+    <a class="btn" href="{{ url_for('admin.withholding_page') }}">간이세액표 관리 이동</a>
   </div>
   {% if wh_counts %}
   <ul class="mt-8">

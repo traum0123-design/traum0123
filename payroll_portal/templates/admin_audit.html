@@ -41,9 +41,9 @@
         <td>{{ e.ts.strftime('%Y-%m-%d %H:%M:%S') if e.ts else '' }}</td>
         <td>{{ e.company_id or '' }}</td>
         <td>{{ e.actor }}</td>
-        <td>{{ e.action or '' }}</td>
+        <td title="{{ e.action or '' }}">{{ e.action_label or e.action or '' }}</td>
         <td>{{ e.resource or '' }}</td>
-        <td>{{ e.result or '' }}</td>
+        <td title="{{ e.result or '' }}">{{ e.result_label or e.result or '' }}</td>
         <td>{{ e.ip or '' }}</td>
         <td title="{{ e.ua or '' }}">{{ (e.ua or '')[:24] }}{% if e.ua and e.ua|length > 24 %}…{% endif %}</td>
       </tr>
