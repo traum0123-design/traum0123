@@ -1,0 +1,57 @@
+{% extends 'base.html' %}
+{% block content %}
+<div class="kicker">ADMIN</div>
+<h1>월별 마감 현황</h1>
+
+<div class="card">
+  <form id="filters" class="form inline" aria-label="마감 현황 필터">
+    <label for="company">회사</label>
+    <select id="company" name="company_id">
+      <option value="">전체</option>
+      {% for c in companies %}
+      <option value="{{ c.id }}">{{ c.name }}</option>
+      {% endfor %}
+    </select>
+    <label for="from">시작월</label>
+    <input id="from" type="month" name="frm">
+    <label for="to">종료월</label>
+    <input id="to" type="month" name="to">
+    <label><input type="checkbox" id="onlyClosed" checked> 마감만</label>
+    <button type="button" id="btnQuery" class="btn">조회</button>
+  </form>
+</div>
+
+<div class="card">
+  <div class="flex between items-center">
+    <strong>목록</strong>
+    <div class="flex gap-8">
+      <button type="button" id="btnSelectAll" class="btn">전체선택</button>
+      <button type="button" id="btnExport" class="btn primary">선택 월 ZIP 다운로드</button>
+    </div>
+  </div>
+  <div class="table-wrap" style="margin-top:8px">
+    <table class="table" id="closingsTable" aria-label="마감 현황 테이블">
+      <thead>
+        <tr>
+          <th class="w-52">선택</th>
+          <th>회사</th>
+          <th>연월</th>
+          <th>행 수</th>
+          <th>마감</th>
+          <th>수정시각</th>
+        </tr>
+      </thead>
+      <tbody></tbody>
+    </table>
+  </div>
+  <div class="flex-end mt-12">
+    <button type="button" id="btnMore" class="btn">더 보기</button>
+  </div>
+  <div id="emptyHint" class="muted" style="display:none; margin-top:8px">검색 결과가 없습니다.</div>
+  <input type="hidden" id="nextCursor" value="">
+  <input type="hidden" id="selectedCompanyId" value="">
+</div>
+
+<script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='admin_closings.js') }}?v={{ app_version }}"></script>
+{% endblock %}
+

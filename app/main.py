@@ -16,6 +16,7 @@ from core.logging_utils import maybe_enable_json_logging, set_request_id
 from core.observability import init_sentry
 
 from .routes.admin import router as admin_router
+from .routes.admin_closings import router as admin_closings_router
 from .routes.portal import router as portal_router
 from core.metrics import observe_request, export_prometheus
 
@@ -56,6 +57,7 @@ def create_app() -> FastAPI:
     application.include_router(api_router, prefix="/api/v1")
     application.include_router(portal_router)
     application.include_router(admin_router)
+    application.include_router(admin_closings_router)
 
     static_dir = Path(__file__).resolve().parents[1] / "payroll_portal" / "static"
     if static_dir.exists():
