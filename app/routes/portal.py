@@ -41,7 +41,7 @@ from core.services.payroll import (
 from core.services.persistence import sync_normalized_rows
 from payroll_api.database import get_db
 from payroll_portal.services.rate_limit import limiter, portal_login_key
-from payroll_portal.utils.assets import resolve_static
+from payroll_portal.utils.assets import resolve_static, clear_manifest_cache
 
 router = APIRouter(prefix="/portal", tags=["portal"])
 
@@ -163,6 +163,12 @@ def _base_context(request: Request, company: Company | None = None) -> dict:
             filename = params.pop("filename", None)
             path_value = params.pop("path", None)
             static_path = filename or path_value or ""
+            try:
+                # In dev, auto-reload manifest so newly built assets are picked up without restart
+                if (getattr(get_settings(), 'app_version', 'dev') or 'dev') == 'dev':
+                    clear_manifest_cache()
+            except Exception:
+                pass
             mapped = resolve_static(static_path)
             return request.app.url_path_for("static", path=mapped)
         return request.url_for(target, **params)
