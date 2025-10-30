@@ -65,7 +65,8 @@ def closings_data(
     company_id: Optional[int] = None,
     frm: Optional[str] = None,  # yyyy-mm
     to: Optional[str] = None,   # yyyy-mm
-    only_closed: bool = True,
+    only_closed: bool = False,
+    status: Optional[str] = None,  # 'all' | 'closed' | 'progress' | 'none'
     fill_range: bool = False,
     limit: int = 50,
     cursor: Optional[str] = None,
@@ -77,7 +78,8 @@ def closings_data(
     q = db.query(MonthlyPayroll, Company).join(Company, Company.id == MonthlyPayroll.company_id)
     if company_id:
         q = q.filter(MonthlyPayroll.company_id == int(company_id))
-    if only_closed:
+    # Backward-compatibility: only_closed takes precedence for SQL filtering
+    if only_closed or (status and status == 'closed'):
         q = q.filter(MonthlyPayroll.is_closed == True)  # noqa: E712
 
     if frm:
@@ -167,8 +169,14 @@ def closings_data(
             next_cur = None
             return {"ok": True, "items": items, "has_more": has_more, "next_cursor": next_cur}
 
-    # Default (no filling): return current page
+    # Default (no filling): current page items, optional post-filter by status
     items = list(rec_map.values())
+    st = (status or 'all').strip().lower()
+    if st == 'progress':
+      items = [it for it in items if (it.get('status') == 'in_progress')]
+    elif st == 'none':
+      # 'none' is meaningful when fill_range produced skeletons; otherwise, filter on computed status
+      items = [it for it in items if (it.get('status') == 'none')]
     has_more = len(rows) > limit
     next_cur = None
     if has_more and items_rows:

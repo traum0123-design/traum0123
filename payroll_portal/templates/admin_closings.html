@@ -16,7 +16,13 @@
     <input id="from" type="month" name="frm">
     <label for="to">종료월</label>
     <input id="to" type="month" name="to">
-    <label><input type="checkbox" id="onlyClosed" checked> 마감만</label>
+    <label for="status">상태</label>
+    <select id="status" name="status">
+      <option value="all" selected>전체</option>
+      <option value="closed">마감</option>
+      <option value="progress">진행</option>
+      <option value="none">미입력</option>
+    </select>
     <button type="button" id="btnQuery" class="btn">조회</button>
   </form>
 </div>
