@@ -237,6 +237,14 @@ def export_zip(
     spooled: io.BufferedRandom = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # 32MB memory, then disk
     with zipfile.ZipFile(spooled, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         from core.schema import DEFAULT_COLUMNS
+        import re
+        def _make_filename(company_name: str, y: int, m: int) -> str:
+            tail = f"{y%100:02d}{m:02d}"
+            title = f"{company_name}_급여_{tail}"
+            # sanitize for zip entry (avoid path separators and reserved characters)
+            title = re.sub(r'[\\/:*?"<>|]+', '_', title)
+            title = title.replace(' ', '')
+            return title + '.xlsx'
         for cid, pairs in selections.items():
             comp = db.get(Company, int(cid))
             if not comp:
@@ -283,7 +291,7 @@ def export_zip(
                     alias_prefs=ap,
                 )
                 bio.seek(0)
-                arcname = f"{comp.slug}/{y}-{m:02d}.xlsx"
+                arcname = _make_filename(comp.name or comp.slug, y, m)
                 zf.writestr(arcname, bio.read())
 
     # audit (best effort)
