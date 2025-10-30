@@ -29,6 +29,11 @@
       <button type="button" id="btnExport" class="btn primary">선택 월 ZIP 다운로드</button>
     </div>
   </div>
+  <div class="legend" style="margin-top:6px">
+    <span class="chip status-closed">마감</span>
+    <span class="chip status-progress">진행</span>
+    <span class="chip status-none">미입력</span>
+  </div>
   <div class="table-wrap" style="margin-top:8px">
     <table class="table" id="closingsTable" aria-label="마감 현황 테이블">
       <thead>
@@ -54,4 +59,3 @@
 
 <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='admin_closings.js') }}?v={{ app_version }}"></script>
 {% endblock %}
-

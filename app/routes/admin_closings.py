@@ -66,6 +66,7 @@ def closings_data(
     frm: Optional[str] = None,  # yyyy-mm
     to: Optional[str] = None,   # yyyy-mm
     only_closed: bool = True,
+    fill_range: bool = False,
     limit: int = 50,
     cursor: Optional[str] = None,
     db: Session = Depends(get_db),
@@ -104,16 +105,18 @@ def closings_data(
             return JSONResponse({"ok": False, "error": "invalid cursor"}, status_code=400)
 
     rows = q.limit(max(1, min(200, limit)) + 1).all()
-    has_more = len(rows) > limit
+
+    # Build map for quick lookup
+    rec_map: dict[tuple[int, int], dict] = {}
     items_rows = rows[:limit]
-    items = []
     for rec, comp in items_rows:
         try:
             data = json.loads(rec.rows_json or "[]")
             rcnt = len(data) if isinstance(data, list) else 0
         except Exception:
             rcnt = 0
-        items.append({
+        status = "closed" if bool(getattr(rec, "is_closed", False)) else ("in_progress" if rcnt > 0 else "none")
+        rec_map[(int(rec.year), int(rec.month))] = {
             "company_id": comp.id,
             "company_name": comp.name,
             "year": int(rec.year),
@@ -121,12 +124,56 @@ def closings_data(
             "is_closed": bool(getattr(rec, "is_closed", False)),
             "updated_at": rec.updated_at.isoformat() if getattr(rec, "updated_at", None) else None,
             "rows_count": rcnt,
-        })
+            "status": status,
+        }
 
+    # If requested and range fully provided for a specific company, fill missing months
+    items = []
+    if fill_range and company_id and frm and to:
+        try:
+            fy, fm = _parse_month(frm)
+            ty, tm = _parse_month(to)
+        except Exception:
+            fy=fm=ty=tm=0
+        def iter_months(y1,m1,y2,m2):
+            ym = y1*12 + (m1-1)
+            end = y2*12 + (m2-1)
+            seq = []
+            while ym <= end:
+                y = ym // 12; m = (ym % 12) + 1
+                seq.append((y,m))
+                ym += 1
+            return seq
+        if fy>0 and ty>0:
+            # descending for recent first
+            for y,m in reversed(iter_months(fy,fm,ty,tm)):
+                item = rec_map.get((y,m))
+                if not item:
+                    # skeleton for missing month
+                    comp = db.get(Company, int(company_id)) if company_id else None
+                    items.append({
+                        "company_id": int(company_id),
+                        "company_name": comp.name if comp else "",
+                        "year": y,
+                        "month": m,
+                        "is_closed": False,
+                        "updated_at": None,
+                        "rows_count": 0,
+                        "status": "none",
+                    })
+                else:
+                    items.append(item)
+            has_more = False
+            next_cur = None
+            return {"ok": True, "items": items, "has_more": has_more, "next_cursor": next_cur}
+
+    # Default (no filling): return current page
+    items = list(rec_map.values())
+    has_more = len(rows) > limit
     next_cur = None
     if has_more and items_rows:
         last_rec, _ = items_rows[-1]
-        next_cur = encode_cursor({"year": last_rec.year, "month": last_rec.month, "id": last_rec.id})
+        next_cur = encode_cursor({"year": int(last_rec.year), "month": int(last_rec.month), "id": int(last_rec.id)})
     return {"ok": True, "items": items, "has_more": has_more, "next_cursor": next_cur}
 
 
