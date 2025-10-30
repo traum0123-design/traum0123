@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Optional
+from typing import Optional, List
 
 from fastapi import APIRouter, Depends, Request
 from fastapi.responses import HTMLResponse, JSONResponse, StreamingResponse, RedirectResponse
@@ -134,12 +134,19 @@ def closings_data(
 def export_zip(
     request: Request,
     company_id: int,
-    month: list[str] = [],  # repeated yyyy-mm
+    month: Optional[List[str]] = None,  # repeated yyyy-mm; also accepts manual parsing
     db: Session = Depends(get_db),
 ):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
-    if not month:
+    # Robustly collect months from query (supports month or month[]= ... styles)
+    months = list(month or [])
+    try:
+        if not months:
+            months = request.query_params.getlist("month") or request.query_params.getlist("month[]")
+    except Exception:
+        months = list(month or [])
+    if not months:
         return JSONResponse({"ok": False, "error": "no months selected"}, status_code=400)
     comp = db.get(Company, int(company_id))
     if not comp:
@@ -148,7 +155,7 @@ def export_zip(
     # Build ZIP in spooled file
     spooled: io.BufferedRandom = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # 32MB memory, then disk
     with zipfile.ZipFile(spooled, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for mon in month:
+        for mon in months:
             try:
                 y, m = _parse_month(mon)
             except Exception:
@@ -180,12 +187,15 @@ def export_zip(
                 if getattr(p, "alias", None):
                     ap[p.field] = p.alias
 
+            # Build workbook with default columns + extras (keep parity with single export)
+            from core.schema import DEFAULT_COLUMNS
+            all_cols = list(DEFAULT_COLUMNS) + [(e.name, e.label, e.typ or 'number') for e in extras]
             bio = build_workbook(
                 company_slug=comp.slug,
                 year=y,
                 month=m,
                 rows=rows,
-                all_columns=[(e.name, e.label, e.typ or 'number') for e in extras],
+                all_columns=all_cols,
                 group_prefs=gp,
                 alias_prefs=ap,
             )
@@ -200,7 +210,7 @@ def export_zip(
             action='bulk_export_download',
             resource='/admin/closings/export.zip',
             company_id=comp.id,
-            meta={"months": month},
+            meta={"months": months},
         )
     except Exception:
         pass
@@ -210,4 +220,3 @@ def export_zip(
     fname = f"closings_{comp.slug}.zip"
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"}
     return StreamingResponse(spooled, media_type="application/zip", headers=headers)
-
