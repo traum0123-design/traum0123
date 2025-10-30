@@ -5,20 +5,20 @@
 
 <div class="card">
   <h2>현황</h2>
-  {% if years %}
-    <ul>
+  <ul id="yearsList">
+    {% if years %}
       {% for y, cnt, min_w, max_w in years %}
         <li>{{ y }}년: {{ cnt }}건 ({{ min_w }} ~ {{ max_w }})</li>
       {% endfor %}
-    </ul>
-  {% else %}
-    <p class="muted">저장된 간이세액표가 없습니다.</p>
-  {% endif %}
+    {% else %}
+      <li class="muted">저장된 간이세액표가 없습니다.</li>
+    {% endif %}
+  </ul>
 </div>
 
 <div class="card">
   <h2>엑셀 업로드</h2>
-  <form method="post" action="/api/admin/tax/withholding/import" enctype="multipart/form-data" class="form">
+  <form id="withholdingUploadForm" method="post" action="/api/admin/tax/withholding/import" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>연도 <input type="number" name="year" min="2000" max="2100" value="2025" required></label>
     <label>파일 (국세청 간이세액표 XLSX) <input type="file" name="file" accept=".xlsx,.xls" required></label>
@@ -26,6 +26,7 @@
       <button type="submit" class="primary">업로드</button>
     </div>
   </form>
+  <div id="uploadMsg" class="muted mt-8" aria-live="polite"></div>
 </div>
 
 <div class="card">
