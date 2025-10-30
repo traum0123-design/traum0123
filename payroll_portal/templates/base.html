@@ -14,6 +14,7 @@
       <nav>
         {% if session.get('is_admin') %}
           <a href="{{ url_for('admin.index') }}">관리자</a>
+          <a href="{{ url_for('admin.closings') }}">마감 현황</a>
           <a href="{{ url_for('admin.logout') }}">로그아웃</a>
         {% elif session.get('company_slug') %}
           <a href="{{ url_for('portal.home', slug=session.get('company_slug')) }}">회사 포털</a>

@@ -5,6 +5,7 @@
 <div class="flex-end">
   <a class="btn" href="{{ url_for('admin.audit') }}" aria-label="감사 로그 보기">감사 로그</a>
   <a class="btn" href="{{ url_for('admin.policy_history') }}" aria-label="정책 변경 이력">정책 이력</a>
+  <a class="btn" href="{{ url_for('admin.closings') }}" aria-label="월별 마감 현황">마감 현황</a>
   </div>
 
 <div class="card">
@@ -42,6 +43,11 @@
           <a href="{{ url_for('admin.company_detail', company_id=c.id) }}">보기</a>
           ·
           <a href="{{ url_for('admin.company_impersonate', company_id=c.id) }}">포털</a>
+          ·
+          <form method="post" action="{{ url_for('admin.company_delete', company_id=c.id) }}" class="d-inline" style="display:inline" data-confirm="정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다.">
+            <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+            <button type="submit" class="btn danger" style="padding:4px 8px;">삭제</button>
+          </form>
         </td>
       </tr>
       {% else %}

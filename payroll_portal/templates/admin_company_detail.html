@@ -52,6 +52,15 @@
   <p class="muted">토큰 키 회전은 필요 시에만 수행하세요. 고객사에게 영향이 있습니다.</p>
   </div>
 
+<div class="card warn">
+  <h2>회사 삭제</h2>
+  <p class="muted">이 작업은 되돌릴 수 없습니다. 회사와 관련 데이터(급여, 항목 설정 등)가 삭제됩니다. 감사 로그는 보존됩니다.</p>
+  <form method="post" data-local="1" action="{{ url_for('admin.company_delete', company_id=company.id) }}" data-confirm="정말 삭제하시겠습니까? 이 작업은 되돌릴 수 없습니다." aria-label="회사 삭제">
+    <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+    <button type="submit" class="danger" aria-label="회사 삭제">회사 삭제</button>
+  </form>
+  </div>
+
 <p>
   <a class="btn" href="{{ url_for('admin.index') }}">목록으로</a>
 </p>

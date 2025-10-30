@@ -9,7 +9,18 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy import func, select
 from sqlalchemy.orm import Session
 
-from core.models import Company, WithholdingCell, AuditEvent, PolicySettingHistory
+from core.models import (
+    Company,
+    WithholdingCell,
+    AuditEvent,
+    PolicySettingHistory,
+    ExtraField,
+    FieldPref,
+    MonthlyPayroll,
+    MonthlyPayrollRow,
+    PolicySetting,
+    IdempotencyRecord,
+)
 from core.services import companies as company_service
 from core.services.auth import issue_admin_token, issue_company_token
 from core.services.audit import record_event
@@ -191,6 +202,51 @@ def company_rotate_token_key(
     except Exception:
         pass
     return RedirectResponse(url=f"/admin/company/{company_id}?rotated=1", status_code=303)
+
+
+@router.post("/company/{company_id}/delete", name="admin.company_delete")
+def company_delete(
+    request: Request,
+    company_id: int,
+    db: Session = Depends(get_db),
+    csrf_token: str | None = Form(None),
+):
+    _verify_csrf(request, csrf_token)
+    if not _is_admin(request):
+        return RedirectResponse(url="/admin/login", status_code=303)
+    comp = db.get(Company, company_id)
+    if not comp:
+        raise HTTPException(status_code=404, detail="company not found")
+    # Best-effort audit before delete
+    try:
+        record_event(
+            db=db,
+            actor='admin',
+            action='company_delete_requested',
+            resource=f"/admin/company/{company_id}/delete",
+            company_id=comp.id,
+            ip=str(request.client.host if request.client else ''),
+            ua=request.headers.get('user-agent',''),
+            result='ok',
+        )
+    except Exception:
+        pass
+    # Delete dependent records first to satisfy FKs
+    try:
+        db.query(MonthlyPayrollRow).filter(MonthlyPayrollRow.company_id == comp.id).delete(synchronize_session=False)
+        db.query(MonthlyPayroll).filter(MonthlyPayroll.company_id == comp.id).delete(synchronize_session=False)
+        db.query(ExtraField).filter(ExtraField.company_id == comp.id).delete(synchronize_session=False)
+        db.query(FieldPref).filter(FieldPref.company_id == comp.id).delete(synchronize_session=False)
+        db.query(PolicySetting).filter(PolicySetting.company_id == comp.id).delete(synchronize_session=False)
+        # Keep audit trail, but you may prune by company if policy requires
+        db.query(IdempotencyRecord).filter(IdempotencyRecord.company_id == comp.id).delete(synchronize_session=False)
+        # Finally, delete the company
+        db.delete(comp)
+        db.commit()
+    except Exception:
+        db.rollback()
+        raise
+    return RedirectResponse(url="/admin/?deleted=1", status_code=303)
 
 
 @router.get("/company/{company_id}/impersonate", name="admin.company_impersonate")
