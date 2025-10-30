@@ -334,3 +334,103 @@ input.invalid-ssn{ border-color:#DC2626 !important; background-color:#FEF2F2 !im
 /* Misc */
 .vr{ display:inline-block; width:1px; height:22px; background:#E2E8F0; }
 .row.spacer{ margin-top:8px; border-top:1px dashed var(--border); padding-top:8px }
+
+/* Employee list visual grouping (Name vs Basic Info)
+   To rollback: remove this block between BEGIN/END markers. */
+/* BEGIN: employee-list-grouping */
+#splitView table.list thead th:nth-child(3),
+#splitView table.list tbody td:nth-child(3){
+  font-weight:800; color:var(--text);
+}
+#splitView table.list thead th:nth-child(2){ min-width:120px; }
+#splitView table.list thead th:nth-child(3){ min-width:140px; }
+
+/* Basic info block shading: 주민등록번호~휴직종료일 */
+#splitView table.list thead th:nth-child(4),
+#splitView table.list thead th:nth-child(5),
+#splitView table.list thead th:nth-child(6),
+#splitView table.list thead th:nth-child(7),
+#splitView table.list thead th:nth-child(8){
+  background:#eef2f7;
+}
+#splitView table.list tbody td:nth-child(4),
+#splitView table.list tbody td:nth-child(5),
+#splitView table.list tbody td:nth-child(6),
+#splitView table.list tbody td:nth-child(7),
+#splitView table.list tbody td:nth-child(8){
+  background:#f9fafb;
+}
+
+/* Visual divider before basic info (at 입사일 column) */
+#splitView table.list thead th:nth-child(5),
+#splitView table.list tbody td:nth-child(5){
+  border-left:2px solid #cbd5e1;
+}
+
+/* Compact text for dates/ids */
+#splitView table.list tbody td:nth-child(4),
+#splitView table.list tbody td:nth-child(5),
+#splitView table.list tbody td:nth-child(6),
+#splitView table.list tbody td:nth-child(7),
+#splitView table.list tbody td:nth-child(8){
+  font-size:12.5px; color:#475569;
+}
+
+/* Mobile: show only #, 사원코드, 사원명 */
+@media (max-width: 720px){
+  #splitView table.list th:nth-child(n+4),
+  #splitView table.list td:nth-child(n+4){ display:none; }
+  #splitView table.list{ table-layout:auto; }
+}
+/* END: employee-list-grouping */
+
+/* BEGIN: option-c minimal-left-list (show only #, code, name) */
+#splitView table.list th:nth-child(n+4),
+#splitView table.list td:nth-child(n+4){
+  display:none;
+}
+/* END: option-c minimal-left-list */
+
+/* --- Global responsive enhancements (applies to all pages) --- */
+/* Large screens */
+@media (max-width: 1440px){
+  .container{ max-width:1240px; padding:18px }
+}
+
+/* Medium screens: tablets/landscape */
+@media (max-width: 1024px){
+  :root{ --ui-scale: 0.98 }
+  .container{ max-width:960px; padding:16px }
+  .grid.two{ grid-template-columns:1fr } /* stack 2-col grids */
+  .kpis{ grid-template-columns:repeat(2, 1fr) }
+  .split-grid{ grid-template-columns:1fr } /* collapse split view */
+  .basic-info{ grid-template-columns:1fr }
+  .topbar .container{ padding:12px 16px }
+  .topbar nav{ display:flex; flex-wrap:wrap; gap:10px }
+  .topbar a{ margin-left:0 }
+  .table th, .table td{ padding:8px 10px; font-size:13px }
+  .table input{ min-width:120px; height:36px; font-size:14px }
+  .actionbar{ gap:6px; padding:8px }
+}
+
+/* Small screens: portrait phones */
+@media (max-width: 720px){
+  :root{ --ui-scale: 0.96 }
+  .container{ max-width:640px; padding:14px }
+  .kpis{ grid-template-columns:1fr }
+  .form.inline label{ display:block; margin:10px 0 6px } /* stack inline forms */
+  .toolbar-group, .toolbar-actions{ gap:6px }
+  .table-wrap{ border-radius:10px } /* keep scroll UX pleasant */
+  .table th, .table td{ padding:6px 8px; font-size:12.5px }
+  .table input{ min-width:100px; height:34px; font-size:13.5px }
+  .drawer-panel{ width:100vw; max-width:100vw }
+}
+
+/* Extra small: narrow phones */
+@media (max-width: 480px){
+  :root{ --ui-scale: 0.94 }
+  .container{ padding:12px }
+  .topbar .brand{ font-size:15px }
+  .btn, button{ padding:8px 12px }
+  .search{ max-width:100% }
+}

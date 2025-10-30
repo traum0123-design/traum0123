@@ -2,23 +2,15 @@
 {% block content %}
 <div class="kicker">PAYROLL</div>
 <h1>{{ company_name }} · {{ year }}년 {{ '%02d'|format(month) }}월 급여입력</h1>
-<div class="flex gap-8 my-8">
-  <button type="button" class="btn" data-action="toggleCompact" aria-label="간단 보기 토글">간단 보기(Shift+M)</button>
-  <button type="button" class="btn" data-action="toggleFixedCols" aria-label="고정 열 토글">고정 열(Shift+F)</button>
-  <button type="button" class="btn" data-action="toggleRowDensity" aria-label="행 밀도 토글">행 밀도(Shift+D)</button>
-  <button type="button" class="btn" data-action="resetLayout" aria-label="레이아웃 초기화">레이아웃 초기화</button>
-  <span class="muted">보기 설정은 회사별로 저장됩니다.</span>
-  <div class="flex-1"></div>
-  <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
-</div>
+{# 상단 단독 엑셀 다운로드 버튼 제거: 툴바의 '엑셀 올리기' 옆으로 이동 #}
 {# Moved inline styles to styles.css to satisfy strict CSP #}
 
   <div class="toolbar">
     <div class="toolbar-group">
       <a class="btn" href="{{ url_for('portal.home', slug=slug) }}">월 변경</a>
       {# 위쪽 공용 툴바로 이동됨 #}
-      
-        <button type="button" class="btn" data-action="openPasteModal" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
+      <button type="button" class="btn" data-action="openPasteModal" {% if is_closed %}disabled{% endif %}>엑셀 올리기</button>
+      <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_payroll', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
   </div>
   <div class="toolbar-actions">
     {% if not is_closed %}

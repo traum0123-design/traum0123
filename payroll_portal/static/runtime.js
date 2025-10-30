@@ -2,6 +2,12 @@
   'use strict';
 
   const CSRF_HEADER = 'X-CSRF-Token';
+  const UI_PREFS_ENABLED = (function(){
+    try{
+      const b = document.body;
+      return !(b && b.dataset && b.dataset.uiPrefs === 'off');
+    }catch(_){ return true; }
+  })();
 
   function setCsrf(){
     try{
@@ -43,6 +49,7 @@
 
   // UI Prefs: apply saved table column widths and persist changes
   function applyTableColumnWidths(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       const head = document.querySelector('#payroll-table thead');
@@ -63,6 +70,7 @@
   }
 
   function applyViewMode(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       fetch(`/api/portal/${encodeURIComponent(window.SLUG)}/ui-prefs?keys=view.mode`, { credentials: 'same-origin' })
@@ -78,6 +86,7 @@
   }
 
   function toggleViewMode(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       const body = document.body; if(!body) return;
       const next = body.classList.contains('view-compact') ? 'comfortable' : 'compact';
@@ -93,6 +102,7 @@
 
   // Row density (compact / comfortable / tall)
   function setRowDensity(mode){
+    if(!UI_PREFS_ENABLED) return;
     try{
       const body = document.body; if(!body) return;
       body.classList.remove('row-density-compact', 'row-density-tall');
@@ -102,6 +112,7 @@
   }
 
   function applyRowDensity(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       fetch(`/api/portal/${encodeURIComponent(window.SLUG)}/ui-prefs?keys=view.rowDensity`, { credentials: 'same-origin' })
@@ -116,6 +127,7 @@
 
   const ROW_DENSITY_ORDER = ['comfortable','compact','tall'];
   function toggleRowDensity(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       const body = document.body; if(!body) return;
       const cur = body.classList.contains('row-density-compact') ? 'compact' : (body.classList.contains('row-density-tall') ? 'tall' : 'comfortable');
@@ -132,6 +144,7 @@
   }
 
   function wireViewModeToggle(){
+    if(!UI_PREFS_ENABLED) return;
     // Toggle with Shift+M (non-invasive)
     window.addEventListener('keydown', function(ev){
       try{
@@ -156,6 +169,7 @@
   }
 
   function resetUILayout(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       // Reset prefs to defaults
@@ -174,6 +188,7 @@
   }
 
   function gatherTableColumnWidths(){
+    if(!UI_PREFS_ENABLED) return {};
     const head = document.querySelector('#payroll-table thead');
     if(!head) return {};
     const out = {};
@@ -187,6 +202,7 @@
 
   let saveWidthsTimer = null;
   function scheduleSaveTableColumnWidths(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       clearTimeout(saveWidthsTimer);
@@ -203,6 +219,7 @@
   }
 
   function wireTableWidthPersistence(){
+    if(!UI_PREFS_ENABLED) return;
     const head = document.querySelector('#payroll-table thead');
     if(!head) return;
     // Save on mouseup in header (after potential drag), and on beforeunload
@@ -239,6 +256,7 @@
   }
 
   function setStickyColumns(n){
+    if(!UI_PREFS_ENABLED) return;
     try{
       const table = document.getElementById('payroll-table');
       if(!table) return;
@@ -266,6 +284,7 @@
   }
 
   function applyFixedColsFromPrefs(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       if(!window.SLUG) return;
       fetch(`/api/portal/${encodeURIComponent(window.SLUG)}/ui-prefs?keys=table.fixedCols`, { credentials: 'same-origin' })
@@ -280,6 +299,7 @@
 
   let fixedCols = 0;
   function toggleFixedCols(){
+    if(!UI_PREFS_ENABLED) return;
     try{
       const headRow = document.querySelector('#payroll-table thead tr');
       if(!headRow) return;
@@ -296,6 +316,7 @@
   }
 
   function wireFixedColsToggle(){
+    if(!UI_PREFS_ENABLED) return;
     window.addEventListener('keydown', function(ev){
       try{
         if(ev.key && (ev.key.toLowerCase() === 'f') && ev.shiftKey){ ev.preventDefault(); toggleFixedCols(); }
@@ -307,9 +328,11 @@
   patchFetch();
   initModals();
   // UI Prefs sync
-  if(document.readyState === 'loading'){
-    document.addEventListener('DOMContentLoaded', function(){ applyTableColumnWidths(); wireTableWidthPersistence(); applyFixedColsFromPrefs(); wireFixedColsToggle(); applyViewMode(); applyRowDensity(); wireViewModeToggle(); });
-  }else{
-    applyTableColumnWidths(); wireTableWidthPersistence(); applyFixedColsFromPrefs(); wireFixedColsToggle(); applyViewMode(); applyRowDensity(); wireViewModeToggle();
+  if(UI_PREFS_ENABLED){
+    if(document.readyState === 'loading'){
+      document.addEventListener('DOMContentLoaded', function(){ applyTableColumnWidths(); wireTableWidthPersistence(); applyFixedColsFromPrefs(); wireFixedColsToggle(); applyViewMode(); applyRowDensity(); wireViewModeToggle(); });
+    }else{
+      applyTableColumnWidths(); wireTableWidthPersistence(); applyFixedColsFromPrefs(); wireFixedColsToggle(); applyViewMode(); applyRowDensity(); wireViewModeToggle();
+    }
   }
 })();

@@ -2014,21 +2014,45 @@ def api_export(
         rows = json.loads(rec.rows_json or "[]")
     except Exception:
         rows = []
-    # Build workbook identical to Flask export using shared exporter
-    from core.exporter import build_salesmap_workbook_stream_spooled as build_salesmap_workbook_stream
+    # Build workbook (gracefully handle missing optional deps like openpyxl)
+    try:
+        from core.exporter import build_salesmap_workbook_stream_spooled as build_salesmap_workbook_stream
+    except Exception as exc:
+        # Provide a clearer message instead of a 500 stacktrace
+        raise HTTPException(status_code=500, detail="export module not available (install dependencies)") from exc
     from core.schema import DEFAULT_COLUMNS
     # Build all_columns = DEFAULT + extras
     extras = db.query(ExtraField).filter(ExtraField.company_id == company.id).order_by(ExtraField.position.asc(), ExtraField.id.asc()).all()
     all_columns = list(DEFAULT_COLUMNS) + [(e.name, e.label, e.typ or 'number') for e in extras]
     # group/alias prefs
-    rows_pref = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
+    # Load group/alias preferences but avoid hard-failing if the FieldPref schema
+    # is behind (e.g., missing recently added columns). Fallback to a lightweight
+    # SELECT that only reads existing columns.
     gp = {}
     ap = {}
-    for p in rows_pref:
-        if p.group and p.group != "none":
-            gp[p.field] = p.group
-        if p.alias:
-            ap[p.field] = p.alias
+    try:
+        rows_pref = db.query(FieldPref).filter(FieldPref.company_id == company.id).all()
+        for p in rows_pref:
+            if getattr(p, "group", None) and p.group != "none":
+                gp[p.field] = p.group
+            if getattr(p, "alias", None):
+                ap[p.field] = p.alias
+    except Exception:
+        try:
+            rs = db.execute(
+                text("SELECT field, \"group\", alias FROM field_prefs WHERE company_id = :cid"),
+                {"cid": company.id},
+            ).all()
+            for r in rs:
+                fld = (r[0] or "").strip()
+                grp = (r[1] or "none").strip()
+                als = (r[2] or "").strip()
+                if grp and grp != "none":
+                    gp[fld] = grp
+                if als:
+                    ap[fld] = als
+        except Exception:
+            gp, ap = {}, {}
     bio = build_salesmap_workbook_stream(
         company_slug=company.slug,
         year=year,
