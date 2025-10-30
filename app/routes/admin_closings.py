@@ -108,8 +108,8 @@ def closings_data(
 
     rows = q.limit(max(1, min(200, limit)) + 1).all()
 
-    # Build map for quick lookup
-    rec_map: dict[tuple[int, int], dict] = {}
+    # Build map for quick lookup (by company, year, month)
+    rec_map: dict[tuple[int, int, int], dict] = {}
     items_rows = rows[:limit]
     for rec, comp in items_rows:
         try:
@@ -118,7 +118,7 @@ def closings_data(
         except Exception:
             rcnt = 0
         status = "closed" if bool(getattr(rec, "is_closed", False)) else ("in_progress" if rcnt > 0 else "none")
-        rec_map[(int(rec.year), int(rec.month))] = {
+        rec_map[(int(comp.id), int(rec.year), int(rec.month))] = {
             "company_id": comp.id,
             "company_name": comp.name,
             "year": int(rec.year),
@@ -149,7 +149,7 @@ def closings_data(
         if fy>0 and ty>0:
             # descending for recent first
             for y,m in reversed(iter_months(fy,fm,ty,tm)):
-                item = rec_map.get((y,m))
+                item = rec_map.get((int(company_id), y, m))
                 if not item:
                     # skeleton for missing month
                     comp = db.get(Company, int(company_id)) if company_id else None
