@@ -715,6 +715,10 @@ function nsKey(name){ return STORAGE_NS + name; }
           if(label==='월 시작일') v = monthStart();
           if(label==='월 말일') v = monthEnd();
           if(label==='월 총 일수') v = daysInMonth(YEAR, MONTH);
+          // Do not carry over computed deduction fields; force fresh server calc
+          if(label==='소득세' || label==='지방소득세'){
+            v = '';
+          }
           nr[f] = v;
         }
         if(DEBUG){

@@ -215,7 +215,11 @@ def _get_withholding_rows_cached(session: Session, year: int, dep: int, *, ttl: 
 
 
 def compute_withholding_tax(session: Session, year: int, dependents: int, wage: int) -> int:
-    rows = _get_withholding_rows_cached(session, int(year), int(dependents))
+    # Dependents count 0 behaves same as 1 (self is always included)
+    dep = int(dependents)
+    if dep <= 0:
+        dep = 1
+    rows = _get_withholding_rows_cached(session, int(year), dep)
     target = int(wage)
     # Find the largest wage <= target
     lo_tax = 0
@@ -225,6 +229,30 @@ def compute_withholding_tax(session: Session, year: int, dependents: int, wage: 
         else:
             break
     return int(lo_tax)
+
+
+def invalidate_withholding_cache(year: int | None = None, dep: int | None = None) -> None:
+    """Invalidate cached withholding rows.
+
+    - If both `year` and `dep` are None, clears entire cache.
+    - If only `year` is provided, clears all entries for that year.
+    - If `year` and `dep` are provided, clears that specific key.
+    """
+    if year is None and dep is None:
+        _WH_CACHE.clear()
+        _WH_CACHE_TS.clear()
+        return
+    keys = list(_WH_CACHE.keys())
+    for y, d in keys:
+        if (year is None or int(y) == int(year)) and (dep is None or int(d) == int(dep)):
+            try:
+                del _WH_CACHE[(y, d)]
+            except KeyError:
+                pass
+            try:
+                del _WH_CACHE_TS[(y, d)]
+            except KeyError:
+                pass
 
 
 def compute_deductions(

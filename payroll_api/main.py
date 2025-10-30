@@ -396,6 +396,25 @@ async def admin_withholding_import(
                     break
             if not header_row_idx:
                 raise ValueError("의존가족수 헤더를 찾을 수 없습니다.")
+            # Normalize dependents: treat 0 as 1 (self is always included).
+            # If both 0 and 1 columns exist, prefer the original '1' column values.
+            chosen: dict[int, tuple[int, int]] = {}  # adj_dep -> (col_idx, original_dv)
+            for c, dv in dep_cols.items():
+                try:
+                    dv_i = int(dv)
+                except Exception:
+                    continue
+                adj = 1 if dv_i <= 0 else dv_i
+                prev = chosen.get(adj)
+                if not prev:
+                    chosen[adj] = (c, dv_i)
+                else:
+                    prev_c, prev_dv = prev
+                    # Prefer column that is labeled exactly 1 over 0 (or others)
+                    if prev_dv != 1 and dv_i == 1:
+                        chosen[adj] = (c, dv_i)
+                    # Otherwise keep existing
+            dep_cols = {c: adj for adj, (c, _orig) in chosen.items()}
             data: list[dict[str, int]] = []
             for r in range(header_row_idx+1, ws.max_row+1):
                 v = ws.cell(row=r, column=1).value
@@ -408,6 +427,8 @@ async def admin_withholding_import(
                         break
                     else:
                         continue
+                # Excel A/B columns are monthly wage in thousands → store in won
+                wage_v = wage_v * 1000
                 for c, dep_v in dep_cols.items():
                     tv = ws.cell(row=r, column=c).value
                     try:
@@ -422,6 +443,12 @@ async def admin_withholding_import(
                 db.query(WithholdingCell).filter(WithholdingCell.year == year).delete(synchronize_session=False)
                 db.bulk_insert_mappings(WithholdingCell, data)  # type: ignore[arg-type]
                 inserted = len(data)
+            # Invalidate withholding cache for this year to avoid stale results
+            try:
+                from core.services import payroll as _payroll
+                _payroll.invalidate_withholding_cache(year)
+            except Exception:
+                pass
             return {"ok": True, "year": year, "count": inserted}, 200
 
         content_json, status = maybe_idempotent_json(

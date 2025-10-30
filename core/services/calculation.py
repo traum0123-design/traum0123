@@ -174,6 +174,17 @@ def compute_deductions(
             if name not in DEDUCTION_FIELDS:
                 earnings_fields.add(name)
 
+    # Server-side guard: exclude meta/helper numeric fields from earnings base
+    # 소득세 과세표 기준 금액 산정에서 '기준보수월액' 등은 제외 (건보 로직과 동일 철학)
+    SERVER_EXCLUDED_META_FIELDS = {
+        "월 총 일수",
+        "근무일수",
+        "부양가족수",
+        "기준보수월액",
+        "월급여",
+    }
+    earnings_fields = {f for f in earnings_fields if f not in SERVER_EXCLUDED_META_FIELDS}
+
     # Normalize numeric values
     values: dict[str, int] = {}
     for key, val in (row or {}).items():
@@ -253,7 +264,7 @@ def compute_deductions(
 
     employment_insurance = calc_amount(ei_cfg, "rate", base_ei)
 
-    dependents = _to_int(row.get("부양가족수") or row.get("부양 가족수") or 1)
+    dependents = max(1, _to_int(row.get("부양가족수") or row.get("부양 가족수") or 1))
     wage = default_base
     income_tax = compute_withholding_tax(session, year, dependents, wage)
     # 지방소득세 라운딩 규칙: 설정(TAX_LOCAL_*) 기반으로 고정
@@ -273,6 +284,7 @@ def compute_deductions(
     local_tax = _round_amount_cfg(local_raw, tax_cfg)
 
     metadata: dict[str, object] = {
+        "year": int(year),
         "default_base": default_base,
         "base_national_pension": base_np,
         "base_health_insurance": base_nhis,

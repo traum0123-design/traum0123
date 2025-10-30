@@ -66,7 +66,8 @@
   }
 
   function scheduleServerCalc(tr, payload){
-    const key = JSON.stringify(payload.row || {});
+    // Include year/slug/month in cache key to avoid cross-year reuse
+    const key = JSON.stringify({ y: (typeof YEAR!=='undefined'? YEAR : payload.year), m: (typeof MONTH!=='undefined'? MONTH : null), s: (typeof SLUG!=='undefined'? SLUG : null), row: (payload.row || {}) });
     SERVER_CALC_LAST.set(tr, key);
     if(SERVER_CALC_TIMER.has(tr)){
       clearTimeout(SERVER_CALC_TIMER.get(tr));
