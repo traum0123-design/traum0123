@@ -188,45 +188,60 @@ def closings_data(
 @router.get("/export.zip")
 def export_zip(
     request: Request,
-    company_id: int,
+    company_id: Optional[int] = None,
     month: Optional[List[str]] = None,  # repeated yyyy-mm; also accepts manual parsing
     db: Session = Depends(get_db),
 ):
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
-    # Robustly collect months from query (supports month or month[]= ... styles)
-    months = list(month or [])
+    # Build selection map: either (company_id + months) or sel=company:yyy-mm list
+    selections: dict[int, list[tuple[int,int]]] = {}
+    # Path 1: explicit 'sel' pairs
+    sels = []
     try:
-        if not months:
-            months = request.query_params.getlist("month") or request.query_params.getlist("month[]")
+        sels = request.query_params.getlist("sel")
     except Exception:
+        sels = []
+    if sels:
+        for s in sels:
+            try:
+                cid_str, mon = str(s).split(":", 1)
+                y, m = _parse_month(mon)
+                cid = int(cid_str)
+                selections.setdefault(cid, []).append((y, m))
+            except Exception:
+                continue
+    else:
+        # Path 2: single company + multiple month params (backward compatible)
+        # Robustly collect months from query (supports month or month[]= ... styles)
         months = list(month or [])
-    if not months:
-        return JSONResponse({"ok": False, "error": "no months selected"}, status_code=400)
-    comp = db.get(Company, int(company_id))
-    if not comp:
-        return JSONResponse({"ok": False, "error": "company not found"}, status_code=404)
+        try:
+            if not months:
+                months = request.query_params.getlist("month") or request.query_params.getlist("month[]")
+        except Exception:
+            months = list(month or [])
+        if not months or not company_id:
+            return JSONResponse({"ok": False, "error": "no months selected"}, status_code=400)
+        lst: list[tuple[int,int]] = []
+        for mon in months:
+            try:
+                y, m = _parse_month(mon)
+                lst.append((y,m))
+            except Exception:
+                continue
+        if not lst:
+            return JSONResponse({"ok": False, "error": "invalid months"}, status_code=400)
+        selections[int(company_id)] = lst
 
     # Build ZIP in spooled file
     spooled: io.BufferedRandom = tempfile.SpooledTemporaryFile(max_size=32 * 1024 * 1024)  # 32MB memory, then disk
     with zipfile.ZipFile(spooled, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
-        for mon in months:
-            try:
-                y, m = _parse_month(mon)
-            except Exception:
+        from core.schema import DEFAULT_COLUMNS
+        for cid, pairs in selections.items():
+            comp = db.get(Company, int(cid))
+            if not comp:
                 continue
-            rec = (
-                db.query(MonthlyPayroll)
-                .filter(MonthlyPayroll.company_id == comp.id, MonthlyPayroll.year == y, MonthlyPayroll.month == m)
-                .first()
-            )
-            if not rec:
-                continue
-            try:
-                rows = json.loads(rec.rows_json or "[]")
-            except Exception:
-                rows = []
-            # extras and prefs
+            # cache extras/prefs per company for efficiency
             extras = (
                 db.query(ExtraField)
                 .filter(ExtraField.company_id == comp.id)
@@ -241,22 +256,35 @@ def export_zip(
                     gp[p.field] = p.group
                 if getattr(p, "alias", None):
                     ap[p.field] = p.alias
-
-            # Build workbook with default columns + extras (keep parity with single export)
-            from core.schema import DEFAULT_COLUMNS
             all_cols = list(DEFAULT_COLUMNS) + [(e.name, e.label, e.typ or 'number') for e in extras]
-            bio = build_workbook(
-                company_slug=comp.slug,
-                year=y,
-                month=m,
-                rows=rows,
-                all_columns=all_cols,
-                group_prefs=gp,
-                alias_prefs=ap,
-            )
-            bio.seek(0)
-            arcname = f"{comp.slug}_{y}-{m:02d}.xlsx"
-            zf.writestr(arcname, bio.read())
+            seen_pairs = set()
+            for (y, m) in pairs:
+                key = (y, m)
+                if key in seen_pairs: continue
+                seen_pairs.add(key)
+                rec = (
+                    db.query(MonthlyPayroll)
+                    .filter(MonthlyPayroll.company_id == comp.id, MonthlyPayroll.year == y, MonthlyPayroll.month == m)
+                    .first()
+                )
+                if not rec:
+                    continue
+                try:
+                    rows = json.loads(rec.rows_json or "[]")
+                except Exception:
+                    rows = []
+                bio = build_workbook(
+                    company_slug=comp.slug,
+                    year=y,
+                    month=m,
+                    rows=rows,
+                    all_columns=all_cols,
+                    group_prefs=gp,
+                    alias_prefs=ap,
+                )
+                bio.seek(0)
+                arcname = f"{comp.slug}/{y}-{m:02d}.xlsx"
+                zf.writestr(arcname, bio.read())
 
     # audit (best effort)
     try:
@@ -264,8 +292,8 @@ def export_zip(
             actor='admin',
             action='bulk_export_download',
             resource='/admin/closings/export.zip',
-            company_id=comp.id,
-            meta={"months": months},
+            company_id=None,
+            meta={"selection": list(selections.keys())},
         )
     except Exception:
         pass
