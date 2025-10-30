@@ -335,7 +335,61 @@ input.invalid-ssn{ border-color:#DC2626 !important; background-color:#FEF2F2 !im
 .vr{ display:inline-block; width:1px; height:22px; background:#E2E8F0; }
 .row.spacer{ margin-top:8px; border-top:1px dashed var(--border); padding-top:8px }
 
-/* (reverted) employee list visual grouping and minimal-left-list were removed */
+/* Employee list visual grouping (Name vs Basic Info)
+   To rollback: remove this block between BEGIN/END markers. */
+/* BEGIN: employee-list-grouping */
+#splitView table.list thead th:nth-child(3),
+#splitView table.list tbody td:nth-child(3){
+  font-weight:800; color:var(--text);
+}
+#splitView table.list thead th:nth-child(2){ min-width:120px; }
+#splitView table.list thead th:nth-child(3){ min-width:140px; }
+
+/* Basic info block shading: 주민등록번호~휴직종료일 */
+#splitView table.list thead th:nth-child(4),
+#splitView table.list thead th:nth-child(5),
+#splitView table.list thead th:nth-child(6),
+#splitView table.list thead th:nth-child(7),
+#splitView table.list thead th:nth-child(8){
+  background:#eef2f7;
+}
+#splitView table.list tbody td:nth-child(4),
+#splitView table.list tbody td:nth-child(5),
+#splitView table.list tbody td:nth-child(6),
+#splitView table.list tbody td:nth-child(7),
+#splitView table.list tbody td:nth-child(8){
+  background:#f9fafb;
+}
+
+/* Visual divider before basic info (at 입사일 column) */
+#splitView table.list thead th:nth-child(5),
+#splitView table.list tbody td:nth-child(5){
+  border-left:2px solid #cbd5e1;
+}
+
+/* Compact text for dates/ids */
+#splitView table.list tbody td:nth-child(4),
+#splitView table.list tbody td:nth-child(5),
+#splitView table.list tbody td:nth-child(6),
+#splitView table.list tbody td:nth-child(7),
+#splitView table.list tbody td:nth-child(8){
+  font-size:12.5px; color:#475569;
+}
+
+/* Mobile: show only #, 사원코드, 사원명 */
+@media (max-width: 720px){
+  #splitView table.list th:nth-child(n+4),
+  #splitView table.list td:nth-child(n+4){ display:none; }
+  #splitView table.list{ table-layout:auto; }
+}
+/* END: employee-list-grouping */
+
+/* BEGIN: option-c minimal-left-list (show only #, code, name) */
+#splitView table.list th:nth-child(n+4),
+#splitView table.list td:nth-child(n+4){
+  display:none;
+}
+/* END: option-c minimal-left-list */
 
 /* --- Global responsive enhancements (applies to all pages) --- */
 /* Large screens */
