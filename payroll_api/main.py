@@ -104,20 +104,28 @@ load_dotenv()  # .env 자동 로드(개발 편의)
 @asynccontextmanager
 async def lifespan(_: FastAPI):
     settings = get_settings()
+    logger = logging.getLogger("payroll_api.startup")
     if settings.payroll_auto_apply_ddl:
         # Create tables if not exist (for POC). In production use Alembic.
-        Base.metadata.create_all(bind=get_engine())
+        try:
+            Base.metadata.create_all(bind=get_engine())
+        except Exception as exc:
+            # On platforms like Cloud Run, allow the app to boot even if DB is not yet reachable.
+            logger.error("DB init(create_all) failed; continuing startup: %s", exc)
     else:
-        logging.getLogger("payroll_api").info(
+        logger.info(
             "PAYROLL_AUTO_APPLY_DDL=0: skipping automatic DDL. Ensure Alembic migrations have been applied."
         )
     if settings.enforce_alembic_migrations:
         if settings.payroll_auto_apply_ddl:
-            logging.getLogger("payroll_api").warning(
+            logger.warning(
                 "PAYROLL_ENFORCE_ALEMBIC=1 while PAYROLL_AUTO_APPLY_DDL=1; skipping migration check."
             )
         else:
-            ensure_up_to_date(get_engine())
+            try:
+                ensure_up_to_date(get_engine())
+            except Exception as exc:
+                logger.error("Alembic migration check failed; continuing startup: %s", exc)
     yield
 
 

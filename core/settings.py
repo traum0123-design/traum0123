@@ -11,7 +11,9 @@ class PayrollSettings(BaseSettings):
     """Centralized application configuration pulled from environment/.env."""
 
     secret_key: str = Field("dev-secret", alias="SECRET_KEY")
-    admin_password: str = Field(..., alias="ADMIN_PASSWORD")
+    # Make ADMIN_PASSWORD optional at process start to avoid hard-crash on missing env
+    # - When empty, admin login will always fail, but the app can boot (useful for Cloud Run first deploy)
+    admin_password: str = Field("", alias="ADMIN_PASSWORD")
     database_url: Optional[str] = Field(None, alias="DATABASE_URL")
     payroll_auto_apply_ddl: bool = Field(True, alias="PAYROLL_AUTO_APPLY_DDL")
     admin_rate_limit_backend: str = Field("auto", alias="ADMIN_RATE_LIMIT_BACKEND")
@@ -40,9 +42,9 @@ class PayrollSettings(BaseSettings):
     @field_validator("admin_password", mode="before")
     @classmethod
     def _validate_admin_password(cls, value: str | None) -> str:
+        # Allow empty admin password at boot; actual login will fail when empty.
+        # This prevents startup crashes on platforms where envs are injected later or misconfigured.
         val = (value or "").strip()
-        if not val:
-            raise ValueError("ADMIN_PASSWORD must be set")
         return val
 
     @field_validator("database_url", mode="before")

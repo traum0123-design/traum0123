@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 from contextlib import contextmanager
+import os
 from pathlib import Path
 from collections.abc import Generator
 
@@ -25,17 +26,22 @@ logger = logging.getLogger("payroll_core.db")
 
 def _resolve_database_url() -> str:
     # Prefer runtime environment to avoid cached settings in tests
-    import os
     env_url = os.environ.get("DATABASE_URL")
     if env_url:
         return env_url
     settings = get_settings()
     if settings.database_url:
         return settings.database_url
-    # Default to a repo-local SQLite database for developer convenience.
+    # Default to SQLite. Prefer repository path for local dev, but fall back to /tmp for read-only FS (e.g., Cloud Run).
     root = Path(__file__).resolve().parents[1]
-    db_path = (root / "payroll_portal" / "app.db").resolve()
-    return f"sqlite:///{db_path}"
+    repo_db_path = (root / "payroll_portal" / "app.db").resolve()
+    # Cloud Run sets K_SERVICE. Also check writability of the target directory.
+    in_cloud_run = bool(os.environ.get("K_SERVICE") or os.environ.get("K_REVISION"))
+    repo_writable = os.access(repo_db_path.parent, os.W_OK)
+    if in_cloud_run or not repo_writable:
+        tmp_db = Path("/tmp/app.db")
+        return f"sqlite:///{tmp_db}"
+    return f"sqlite:///{repo_db_path}"
 
 
 def get_engine(echo: bool = False) -> Engine:
