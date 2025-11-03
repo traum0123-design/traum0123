@@ -251,8 +251,32 @@ def compute_deductions(
     nhis_cfg = insurance.get("nhis", {})
     ei_cfg = insurance.get("ei", {})
 
-    national_pension = calc_amount(nps_cfg, "rate", base_np)
-    health_insurance = calc_amount(nhis_cfg, "rate", base_nhis)
+    # Apply policy/env min/max bounds so metadata and amounts align
+    def _apply_bounds_int(b: int, cfg: dict[str, object]) -> int:
+        try:
+            bd = Decimal(max(0, int(b)))
+        except Exception:
+            bd = Decimal(0)
+        mn = cfg.get("min_base")
+        mx = cfg.get("max_base")
+        if mn is not None:
+            try:
+                bd = max(bd, Decimal(str(mn)))
+            except Exception:
+                pass
+        if mx is not None:
+            try:
+                bd = min(bd, Decimal(str(mx)))
+            except Exception:
+                pass
+        return int(bd)
+
+    base_np_applied = _apply_bounds_int(base_np, nps_cfg)
+    base_nhis_applied = _apply_bounds_int(base_nhis, nhis_cfg)
+    base_ei_applied = _apply_bounds_int(base_ei, ei_cfg)
+
+    national_pension = calc_amount(nps_cfg, "rate", base_np_applied)
+    health_insurance = calc_amount(nhis_cfg, "rate", base_nhis_applied)
 
     try:
         ltc_rate = Decimal(str(nhis_cfg.get("ltc_rate", 0.1295)))
@@ -262,7 +286,7 @@ def compute_deductions(
     ltc_mode = str(nhis_cfg.get("ltc_rounding") or nhis_cfg.get("rounding") or "round")
     long_term_care = _round_amount(Decimal(health_insurance) * ltc_rate, ltc_step, ltc_mode)
 
-    employment_insurance = calc_amount(ei_cfg, "rate", base_ei)
+    employment_insurance = calc_amount(ei_cfg, "rate", base_ei_applied)
 
     dependents = max(1, _to_int(row.get("부양가족수") or row.get("부양 가족수") or 1))
     wage = default_base
@@ -286,9 +310,10 @@ def compute_deductions(
     metadata: dict[str, object] = {
         "year": int(year),
         "default_base": default_base,
-        "base_national_pension": base_np,
-        "base_health_insurance": base_nhis,
-        "base_employment_insurance": base_ei,
+        # Report bases AFTER applying min/max so UI reflects actual calculation basis
+        "base_national_pension": base_np_applied,
+        "base_health_insurance": base_nhis_applied,
+        "base_employment_insurance": base_ei_applied,
         "dependents": dependents,
         "wage": wage,
     }
