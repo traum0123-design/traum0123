@@ -21,7 +21,8 @@
   <form id="withholdingUploadForm" method="post" action="/api/admin/tax/withholding/import" enctype="multipart/form-data" class="form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>연도 <input type="number" name="year" min="2000" max="2100" value="2025" required></label>
-    <label>파일 (국세청 간이세액표 XLSX) <input type="file" name="file" accept=".xlsx,.xls" required></label>
+    <label>파일 (국세청 간이세액표 XLSX) <input type="file" name="file" accept=".xlsx" required></label>
+    <div class="muted">XLSX 형식만 지원합니다. (.xls 불가)</div>
     <div class="flex-end gap-8">
       <button type="submit" class="primary">업로드</button>
     </div>

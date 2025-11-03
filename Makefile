@@ -74,3 +74,7 @@ dev-run:
 
 dev:
 	make dev-setup && make dev-run
+
+.PHONY: deploy-cloud-run
+deploy-cloud-run:
+	bash scripts/deploy_cloud_run.sh $(PROJECT_ID) $(REGION) $(SERVICE)

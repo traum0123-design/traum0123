@@ -370,6 +370,10 @@ async def admin_withholding_import(
     require_admin(authorization, x_admin_token, None, admin_cookie)
     from openpyxl import load_workbook
     try:
+        # Enforce XLSX only (openpyxl does not support legacy .xls)
+        fname = (getattr(file, "filename", "") or "").lower().strip()
+        if not fname.endswith(".xlsx"):
+            raise HTTPException(status_code=400, detail="xlsx 파일만 지원합니다")
         # Read content once and compute idempotency body hash
         content = await file.read()
         import hashlib
