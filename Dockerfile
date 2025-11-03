@@ -60,4 +60,4 @@ except Exception:\
  sys.exit(1)"
 
 # Start the FastAPI app with uvicorn
-CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-2} --log-level ${UVICORN_LOG_LEVEL:-info}"]
+CMD ["sh", "-c", "uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --workers ${UVICORN_WORKERS:-2} --log-level ${UVICORN_LOG_LEVEL:-info} --proxy-headers --forwarded-allow-ips='*'"]

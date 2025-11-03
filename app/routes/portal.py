@@ -109,15 +109,19 @@ def _verify_csrf(request: Request, token: str | None = None) -> None:
 
     # Same-origin check: prefer Origin, fall back to Referer when present
     origin = (request.headers.get("origin") or "").strip()
+    # Respect proxy headers (e.g., Cloud Run/Ingress) to determine the external scheme
+    xf_proto = (request.headers.get("x-forwarded-proto") or "").split(",")[0].strip().lower()
+    expected_scheme = xf_proto or (request.url.scheme or "").lower()
+    expected_host = request.url.netloc
     if origin:
-        expected = f"{request.url.scheme}://{request.url.netloc}"
+        expected = f"{expected_scheme}://{expected_host}"
         if origin != expected:
             raise HTTPException(status_code=403, detail="invalid origin")
     else:
         referer = (request.headers.get("referer") or "").strip()
         if referer:
             ref = urlparse(referer)
-            if ref.scheme != request.url.scheme or ref.netloc != request.url.netloc:
+            if (ref.scheme or "").lower() != expected_scheme or ref.netloc != expected_host:
                 raise HTTPException(status_code=403, detail="invalid referer")
 
     def _matches(candidate: str) -> bool:
