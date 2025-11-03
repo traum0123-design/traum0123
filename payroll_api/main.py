@@ -2094,7 +2094,17 @@ def api_export(
         group_prefs=gp,
         alias_prefs=ap,
     )
-    filename = f"{company.slug}_{year}-{month:02d}_세일즈맵.xlsx"
+    # Build human-friendly filename: 회사명_급여_YYMM.xlsx (sanitize for header/clients)
+    try:
+        import re
+        display_name = (company.name or company.slug or "company").strip()
+        tail = f"{year%100:02d}{month:02d}"
+        title = f"{display_name}_급여_{tail}"
+        # sanitize: remove forbidden characters in filenames for broad client compatibility
+        safe_title = re.sub(r'[\\/:*?"<>|]+', '_', title).replace(' ', '')
+        filename = f"{safe_title}.xlsx"
+    except Exception:
+        filename = f"{company.slug}_{year%100:02d}{month:02d}.xlsx"
     encoded = quote(filename)
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{encoded}"}
     # Audit (DB) best-effort
