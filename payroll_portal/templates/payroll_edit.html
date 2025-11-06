@@ -425,6 +425,7 @@ const SAVE_URL = {{ save_url | tojson }};
 const STORAGE_NS = '__' + (SLUG || 'default') + '__';
 function nsKey(name){ return STORAGE_NS + name; }
   const IS_ADMIN = {{ 'true' if is_admin else 'false' }};
+  const IS_CLOSED = {{ 'true' if is_closed else 'false' }};
   const EXTRA_FIELDS = {{ (extra_fields or []) | tojson }}; // [{name,label,typ}]
   const EXTRA_SET = new Set((EXTRA_FIELDS||[]).map(e=> e.name));
   const INS = {{ (insurance_config or {}) | tojson }};
@@ -1408,7 +1409,15 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     };
     earnT.innerHTML = ''; dedT.innerHTML='';
     earnings.forEach(([f,l,t])=> earnT.appendChild(row(f,l,t)));
-    deductions.forEach(([f,l,t])=> dedT.appendChild(row(f,l,t)));
+    if (IS_ADMIN || IS_CLOSED) {
+      deductions.forEach(([f,l,t])=> dedT.appendChild(row(f,l,t)));
+    } else {
+      const tr = document.createElement('tr');
+      const td = document.createElement('td'); td.colSpan = 2; td.className = 'muted';
+      td.textContent = '마감 후 공개됩니다.';
+      tr.appendChild(td);
+      dedT.appendChild(tr);
+    }
     updateSplitSummary();
   }
   function buildBasicInfo(base){
@@ -1447,8 +1456,13 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const dEl = document.getElementById('sumDeductions');
     const nEl = document.getElementById('sumNet');
     eEl.textContent = earn.toLocaleString('ko-KR'); eEl.classList.toggle('neg', earn < 0);
-    dEl.textContent = ded.toLocaleString('ko-KR'); dEl.classList.toggle('neg', ded < 0);
-    nEl.textContent = net.toLocaleString('ko-KR'); nEl.classList.toggle('neg', net < 0);
+    if (IS_ADMIN || IS_CLOSED) {
+      dEl.textContent = ded.toLocaleString('ko-KR'); dEl.classList.toggle('neg', ded < 0);
+      nEl.textContent = net.toLocaleString('ko-KR'); nEl.classList.toggle('neg', net < 0);
+    } else {
+      dEl.textContent = '—'; dEl.classList.remove('neg');
+      nEl.textContent = '—'; nEl.classList.remove('neg');
+    }
   }
   // Editable list in left panel
   function availableEditFields(){
