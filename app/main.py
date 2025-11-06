@@ -91,11 +91,26 @@ def create_app() -> FastAPI:
             "Permissions-Policy",
             "geolocation=(), microphone=(), camera=(), usb=(), payment=()",
         )
-        # Introduce CSP in Report-Only and enforce baseline when not set by route
-        if "Content-Security-Policy-Report-Only" not in resp.headers:
-            resp.headers["Content-Security-Policy-Report-Only"] = "default-src 'self'; frame-ancestors 'none'"
-        if "Content-Security-Policy" not in resp.headers:
-            resp.headers["Content-Security-Policy"] = "default-src 'self'; frame-ancestors 'none'"
+        # Introduce CSP with nonce for inline scripts when not set by route
+        try:
+            import secrets
+            nonce = getattr(request.state, "csp_nonce", None)
+            if not nonce:
+                nonce = secrets.token_urlsafe(16)
+                request.state.csp_nonce = nonce
+            policy = (
+                f"default-src 'self'; frame-ancestors 'none'; "
+                f"script-src 'self' 'nonce-{nonce}'; object-src 'none'; base-uri 'self'"
+            )
+            if "Content-Security-Policy" not in resp.headers:
+                resp.headers["Content-Security-Policy"] = policy
+            if "Content-Security-Policy-Report-Only" not in resp.headers:
+                # Align report-only with enforce to avoid noisy console warnings
+                resp.headers["Content-Security-Policy-Report-Only"] = policy
+        except Exception:
+            # As ultimate fallback, keep a minimal CSP if something goes wrong
+            resp.headers.setdefault("Content-Security-Policy", "default-src 'self'; frame-ancestors 'none'")
+            resp.headers.setdefault("Content-Security-Policy-Report-Only", "default-src 'self'; frame-ancestors 'none'")
         # HSTS only when the request is over HTTPS (direct or via proxy header)
         xf_proto = request.headers.get("x-forwarded-proto", "").split(",")[0].strip().lower()
         scheme = (request.url.scheme or "").lower()
@@ -126,6 +141,20 @@ def create_app() -> FastAPI:
         text = export_prometheus()
         from fastapi.responses import PlainTextResponse
         return PlainTextResponse(text, media_type="text/plain; version=0.0.4; charset=utf-8")
+
+    # Provide a favicon to avoid 404 in browsers
+    @application.get("/favicon.ico", include_in_schema=False)
+    async def favicon():
+        # Small, cacheable SVG favicon (served at /favicon.ico for convenience)
+        svg = (
+            "<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'>"
+            "<rect width='64' height='64' rx='8' fill='#2f855a'/><text x='50%' y='55%'"
+            " dominant-baseline='middle' text-anchor='middle' font-size='36' fill='white'"
+            " font-family='-apple-system, BlinkMacSystemFont, Segoe UI, Roboto, Helvetica, Arial, sans-serif'>P</text></svg>"
+        )
+        from fastapi.responses import Response
+        headers = {"Cache-Control": "public, max-age=2592000"}
+        return Response(content=svg, media_type="image/svg+xml", headers=headers)
 
     @application.middleware("http")
     async def _csrf_origin_guard(request: Request, call_next):

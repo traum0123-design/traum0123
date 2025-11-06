@@ -92,11 +92,19 @@ def _apply_template_security(request: Request, response):
         path="/",
     )
     csp_value = response.headers.get("Content-Security-Policy")
-    policy = f"script-src 'self' 'nonce-{nonce}'; object-src 'none'; base-uri 'self'"
+    # Align both enforce and report-only policies to include a nonce so inline
+    # scripts (tagged with nonce) don't trigger report-only warnings.
+    policy = (
+        f"default-src 'self'; frame-ancestors 'none'; "
+        f"script-src 'self' 'nonce-{nonce}'; object-src 'none'; base-uri 'self'"
+    )
     if csp_value:
         response.headers["Content-Security-Policy"] = csp_value
+        # If report-only not set by route, set to the same value for consistency
+        response.headers.setdefault("Content-Security-Policy-Report-Only", csp_value)
     else:
         response.headers["Content-Security-Policy"] = policy
+        response.headers["Content-Security-Policy-Report-Only"] = policy
     return response
 
 

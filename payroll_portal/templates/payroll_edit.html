@@ -117,6 +117,7 @@
           </thead>
           <tbody id="empList"></tbody>
         </table>
+        <div id="basicInfo" class="basic-info"></div>
       </div>
     </div>
 
@@ -124,7 +125,6 @@
     <div class="panel">
       <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
       <div class="panel-body">
-        <div id="basicInfo" class="basic-info"></div>
         <table id="earnTable"></table>
         <div class="summary">
           <div class="row"><span>지급 합계</span><span id="sumEarnings">0</span></div>
@@ -1292,7 +1292,7 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
         inp.value = isNumericField(field) ? formatNumeric(val) : val;
       }
     });
-    // Update proration badge inside '사원명' cell
+    // Update proration badge and net badge inside '사원명' cell
     try{
       const pr = computeProrationForRow(base);
       const nameInput = row.querySelector("input.list-input[data-field='사원명']");
@@ -1311,6 +1311,17 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
         }else if(badge){
           badge.remove();
         }
+        // Net badge
+        const groupsNow = classify();
+        const earnFs = (groupsNow.earnings||[]).map(([f])=>f);
+        const dedFs = (groupsNow.deductions||[]).map(([f])=>f);
+        const sumFields = (arr)=> arr.reduce((acc, f)=>{
+          const el = base.querySelector(`[name$='[${f}]']`); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
+        },0);
+        const earn = sumFields(earnFs); const ded = sumFields(dedFs); const net = earn - ded;
+        let nb = nameTd.querySelector('.np-badge');
+        if(!nb){ nb = document.createElement('span'); nb.className = 'badge badge-net np-badge'; nb.style.marginLeft='6px'; nameTd.appendChild(nb); }
+        nb.textContent = `지급 ${net.toLocaleString('ko-KR')}`;
       }
     }catch(_){ }
   }
@@ -1486,6 +1497,9 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     if(sEl && sEl.dataset && sEl.dataset.comp==='1') return;
     const q = (sEl?.value||'').trim().toLowerCase();
     const fields = availableEditFields();
+    const groupsForList = classify();
+    const __earnFields = (groupsForList.earnings||[]).map(([f])=>f);
+    const __dedFields = (groupsForList.deductions||[]).map(([f])=>f);
     const fragment = document.createDocumentFragment();
     document.querySelectorAll('#payroll-table tbody tr').forEach((tr, idx)=>{
       const get = (name)=> tr.querySelector(`[name$='[${name}]']`);
@@ -1541,6 +1555,16 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
               b.textContent = `일할 ${pr.days}/${pr.total} (${pr.percent}%)`;
               td.appendChild(b);
             }
+            // Net pay quick badge
+            const sumFields = (arr)=> arr.reduce((acc, f)=>{
+              const el = get(f); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
+            },0);
+            const earn = sumFields(__earnFields); const ded = sumFields(__dedFields); const net = earn - ded;
+            const nb = document.createElement('span');
+            nb.className = 'badge badge-net np-badge';
+            nb.style.marginLeft = '6px';
+            nb.textContent = `지급 ${net.toLocaleString('ko-KR')}`;
+            td.appendChild(nb);
           }catch(_){ }
         }
         rowEl.appendChild(td);
