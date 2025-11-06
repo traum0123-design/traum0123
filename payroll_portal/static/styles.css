@@ -212,10 +212,13 @@ body.density-dense .table input{ min-width:140px; height:34px; font-size:14px }
 .summary .row.total{ font-weight:800 }
 
 /* Left split: list + basic info side-by-side */
-.left-split{ display:grid; grid-template-columns: 56% 44%; gap:12px; align-items:start; }
-.left-list{ min-width:0; }
-.left-basic{ min-width:0; }
-@media (max-width: 1280px){ .left-split{ grid-template-columns:1fr; } }
+.left-split{ display:grid; grid-template-columns: minmax(0,1fr) 420px; gap:12px; align-items:start; }
+.left-list{ min-width:0; overflow:auto; }
+.left-basic{ min-width:0; position:sticky; top:0; align-self:start; }
+@media (max-width: 1200px){ .left-split{ grid-template-columns:1fr; } }
+
+/* small badge for net pay */
+.badge-net{ background:#ecfeff; border-color:#06b6d455; color:#0e7490; font-weight:700; }
 
 /* KPI cards */
 .kpis{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin:8px 0 }
