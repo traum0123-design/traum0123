@@ -1790,8 +1790,7 @@ function gridInputChanged(el){
     }catch(_){ }
   })();
   const _search = document.getElementById('rowSearch'); if(_search){ _search.addEventListener('input', applyRowFilter); }
-  // Readonly lock when closed
-  const IS_CLOSED = {{ 'true' if is_closed else 'false' }};
+  // Readonly lock when closed (use global IS_CLOSED declared above)
   if(IS_CLOSED){
     try{
       // Disable inputs inside form
