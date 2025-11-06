@@ -211,6 +211,12 @@ body.density-dense .table input{ min-width:140px; height:34px; font-size:14px }
 .summary .row{ display:flex; justify-content:space-between; padding:4px 0 }
 .summary .row.total{ font-weight:800 }
 
+/* Left split: list + basic info side-by-side */
+.left-split{ display:grid; grid-template-columns: 56% 44%; gap:12px; align-items:start; }
+.left-list{ min-width:0; }
+.left-basic{ min-width:0; }
+@media (max-width: 1280px){ .left-split{ grid-template-columns:1fr; } }
+
 /* KPI cards */
 .kpis{ display:grid; grid-template-columns:repeat(4, 1fr); gap:12px; margin:8px 0 }
 .kpi{ background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; box-shadow:var(--shadow) }

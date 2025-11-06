@@ -92,7 +92,9 @@
         {% endif %}
       </div>
       <div class="panel-body">
-        <table class="list">
+        <div class="left-split">
+          <div class="left-list">
+            <table class="list">
           <colgroup id="empColgroup">
             <col class="w-52">
             <col data-col="1" class="w-120">
@@ -117,7 +119,12 @@
           </thead>
           <tbody id="empList"></tbody>
         </table>
-        <div id="basicInfo" class="basic-info"></div>
+          </div>
+          <div class="left-basic card">
+            <h2>기본정보</h2>
+            <div id="basicInfo" class="basic-info"></div>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1401,8 +1408,9 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     document.getElementById('selName').textContent = (base.querySelector(`[name$='[사원명]']`)?.value||'') || (base.querySelector(`[name$='[사원코드]']`)?.value||'');
     const bi = document.getElementById('basicInfo');
     if(bi){
-      if(getShowBasicInfo()){ bi.style.display='grid'; buildBasicInfo(base); }
-      else { bi.style.display='none'; bi.innerHTML=''; }
+      const card = bi.closest('.left-basic') || bi;
+      if(getShowBasicInfo()){ card.style.display='block'; bi.style.display='grid'; buildBasicInfo(base); }
+      else { bi.style.display='none'; bi.innerHTML=''; if(card!==bi) card.style.display='none'; }
     }
     const { earnings, deductions } = classify();
     const earnT = document.getElementById('earnTable'); const dedT = document.getElementById('dedTable');
