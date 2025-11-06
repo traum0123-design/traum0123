@@ -40,7 +40,8 @@ def upgrade() -> None:
         sa.Column('month', sa.Integer(), nullable=False),
         sa.Column('rows_json', sa.Text(), nullable=False, server_default='[]'),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
-        sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        # Use dialect-agnostic boolean default
+        sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.ForeignKeyConstraint(['company_id'], ['companies.id']),
         sa.UniqueConstraint('company_id', 'year', 'month', name='uq_company_month'),
     )
@@ -69,10 +70,10 @@ def upgrade() -> None:
         sa.Column('field', sa.String(length=200), nullable=False),
         sa.Column('group', sa.String(length=20), nullable=False, server_default='none'),
         sa.Column('alias', sa.String(length=200), nullable=False, server_default=''),
-        sa.Column('exempt_enabled', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('exempt_enabled', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('exempt_limit', sa.Integer(), nullable=False, server_default='0'),
-        sa.Column('ins_nhis', sa.Boolean(), nullable=False, server_default=sa.text('0')),
-        sa.Column('ins_ei', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('ins_nhis', sa.Boolean(), nullable=False, server_default=sa.text('false')),
+        sa.Column('ins_ei', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['company_id'], ['companies.id']),
         sa.UniqueConstraint('company_id', 'field', name='uq_company_fieldpref'),
@@ -124,7 +125,7 @@ def upgrade() -> None:
         sa.Column('net_pay', sa.Integer(), nullable=True),
         sa.Column('year', sa.Integer(), nullable=False),
         sa.Column('month', sa.Integer(), nullable=False),
-        sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.text('0')),
+        sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.text('false')),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.ForeignKeyConstraint(['payroll_id'], ['monthly_payrolls.id']),
         sa.ForeignKeyConstraint(['company_id'], ['companies.id']),
@@ -155,4 +156,3 @@ def downgrade() -> None:
 
     op.drop_index('ix_companies_slug', table_name='companies')
     op.drop_table('companies')
-

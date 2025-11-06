@@ -1,0 +1,21 @@
+HTTP/2 200 
+content-type: text/html; charset=utf-8
+set-cookie: portal_csrf=hsdIEF2oc660V1Kxc1dHHkhEUEMkJHwtiaf9UU53iXU; HttpOnly; Max-Age=3600; Path=/; SameSite=Lax; Secure
+content-security-policy: script-src 'self' 'nonce-vtIeV5yQ1ezsOl_T06nXbQ'; object-src 'none'; base-uri 'self'
+x-request-id: 26e15b146be94e6fa3a5c9f478fe0cf6
+x-frame-options: DENY
+x-content-type-options: nosniff
+referrer-policy: strict-origin-when-cross-origin
+cross-origin-resource-policy: same-site
+cross-origin-opener-policy: same-origin
+permissions-policy: geolocation=(), microphone=(), camera=(), usb=(), payment=()
+content-security-policy-report-only: default-src 'self'; frame-ancestors 'none'
+strict-transport-security: max-age=31536000; includeSubDomains; preload
+x-cloud-trace-context: 945921cf87a8c82e3c43f861fd4867af;o=1
+date: Thu, 06 Nov 2025 01:00:59 GMT
+server: Google Frontend
+content-length: 2598
+expires: Thu, 06 Nov 2025 01:00:59 GMT
+cache-control: private
+alt-svc: h3=":443"; ma=2592000,h3-29=":443"; ma=2592000
+

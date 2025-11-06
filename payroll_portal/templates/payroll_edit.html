@@ -1114,7 +1114,7 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
   }
 
   // Column view toggling
-  const ESSENTIAL_FIELDS = {{ ['사원코드','사원명','주민등록번호','입사일','월급여','기본급','식대','비고'] | tojson }};
+  const ESSENTIAL_FIELDS = {{ ['사원코드','사원명','주민등록번호','입사일','기본급','식대','비고'] | tojson }};
   const groupState = { basic:true, pay:true, allowance:true, deduct:true, status:true, misc:true };
   function setColumnHidden(col, hidden){
     const scope = document.getElementById('payroll-table');
@@ -1314,7 +1314,11 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     }catch(_){ }
   }
   function bindProxy(input, base, field, typ){
-    if(!base || base.disabled || base.readOnly){ input.disabled = true; input.readOnly = true; return; }
+    if(!base){ input.disabled = true; input.readOnly = true; return; }
+    // If the base input is readOnly (e.g., 4대보험 in portal),
+    // keep the proxy readOnly but still bind so values display and stay in sync.
+    if(base.disabled){ input.disabled = true; input.readOnly = true; return; }
+    if(base.readOnly){ input.readOnly = true; }
     if(base.type==='checkbox'){
       input.type = 'checkbox';
       input.checked = base.checked;
@@ -1689,9 +1693,14 @@ function gridInputChanged(el){
       const r2 = await fetch(`/api/portal/${SLUG}/fields/calc-config`);
       const j2 = await r2.json();
       if(r2.ok && j2 && j2.ok && j2.include){
-        const incLocal = loadInsIncludeMap(); const incSrv = j2.include || {};
-        ['nhis','ei'].forEach(k=>{ incLocal[k] = incLocal[k] || {}; Object.keys(incSrv[k]||{}).forEach(f=>{ if(incSrv[k][f]) incLocal[k][f] = true; }); });
-        saveInsIncludeMap(incLocal);
+        // Replace local include map with server source of truth
+        const incSrv = j2.include || {};
+        const next = { nps: {}, nhis: {}, ei: {} };
+        ['nhis','ei'].forEach(k=>{
+          const src = incSrv[k] || {};
+          Object.keys(src).forEach(f=>{ if(src[f]) next[k][f] = true; });
+        });
+        saveInsIncludeMap(next);
       }
     }catch(_){ }
     try{ computeAll(); }catch(_){ }
