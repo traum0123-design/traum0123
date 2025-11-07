@@ -206,7 +206,7 @@ body.density-dense .table input{ min-width:140px; height:34px; font-size:14px }
 #splitView table.list tbody td{ overflow: hidden; }
 #splitView #empList input.list-input[data-field="사원명"]{ min-width:80px !important; }
 #splitView #empList input.list-input[data-field="주민등록번호"]{ min-width:180px !important; }
-.list tr.active{ background:#eef2ff }
+.list tr.active{ background:inherit }
 .list tr:hover{ background:#f8fafc }
 .list-input{ width:100%; height:38px; padding:8px 10px; border:1px solid var(--border); border-radius:10px; outline:none; background:#fff; font-size:14px }
 .list-input:focus{ border-color:var(--primary); box-shadow:0 0 0 3px rgba(37,99,235,.15) }

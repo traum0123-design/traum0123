@@ -1582,8 +1582,9 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     });
     tbody.innerHTML = '';
     tbody.appendChild(fragment);
-    const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
-    if(active){ active.classList.add('active'); }
+    // Do not mark any list row as active by default to avoid visual emphasis
+    // const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
+    // if(active){ active.classList.add('active'); }
   }
 
 function gridInputChanged(el){
