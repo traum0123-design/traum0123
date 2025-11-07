@@ -30,9 +30,7 @@ def _build_row(payroll: MonthlyPayroll, row: Dict) -> MonthlyPayrollRow:
     return MonthlyPayrollRow(
         payroll_id=payroll.id,
         company_id=payroll.company_id,
-        # When employee code is blank, store NULL to avoid unique constraint
-        # conflicts on (payroll_id, employee_code) across multiple unnamed rows.
-        employee_code=_none_if_blank(row.get("사원코드")),
+        employee_code=_to_str(row.get("사원코드")),
         employee_name=_to_str(row.get("사원명")),
         employee_ssn=_store_ssn(_to_str(row.get("주민등록번호"))),
         hire_date=hire_date,
@@ -63,11 +61,6 @@ def _build_row(payroll: MonthlyPayroll, row: Dict) -> MonthlyPayrollRow:
 
 def _to_str(value) -> str:
     return str(value or "").strip()
-
-
-def _none_if_blank(value) -> str | None:
-    s = str(value or "").strip()
-    return s if s else None
 
 
 def _store_ssn(ssn: str) -> str:
