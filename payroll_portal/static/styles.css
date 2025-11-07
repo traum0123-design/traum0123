@@ -105,6 +105,10 @@ button.danger, .danger{ background:var(--danger); color:#fff; border-color:var(-
 .table input.num{ min-width:110px }
 .table input[type="date"]{ min-width:140px }
 .table tfoot td{ position:sticky; bottom:0; background:#f8fafc; border-top:2px solid #94a3b8; font-weight:700 }
+/* On desktop, do not stick the table footer to avoid bottom overlay */
+@media (min-width: 1024px){
+  .table tfoot td{ position:static; bottom:auto; }
+}
 .table tbody tr:focus-within{ outline:2px solid #93c5fd; outline-offset:-2px }
 /* Desktop: avoid initial focus outline flash on table rows */
 @media (min-width: 1024px){
