@@ -54,6 +54,8 @@ body{
   background:rgba(15,23,42,.9); backdrop-filter:saturate(150%) blur(6px);
   color:#fff; box-shadow:0 2px 12px rgba(2,6,23,.25)
 }
+/* Defensive: hide legacy mobile toggle button if present in old templates */
+#mobileToggleList{ display:none !important }
 .topbar .brand{ font-weight:800; letter-spacing:.2px }
 .topbar .brand::before{ content:"•"; color:#60a5fa; margin-right:8px }
 .topbar a{ color:#c7d2fe; margin-left:16px; text-decoration:none }
