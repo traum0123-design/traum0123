@@ -106,6 +106,10 @@ button.danger, .danger{ background:var(--danger); color:#fff; border-color:var(-
 .table input[type="date"]{ min-width:140px }
 .table tfoot td{ position:sticky; bottom:0; background:#f8fafc; border-top:2px solid #94a3b8; font-weight:700 }
 .table tbody tr:focus-within{ outline:2px solid #93c5fd; outline-offset:-2px }
+/* Desktop: avoid initial focus outline flash on table rows */
+@media (min-width: 1024px){
+  .table tbody tr:focus-within{ outline: none; outline-offset: 0; }
+}
 
 /* Resizable columns */
 .table thead th{ position: sticky; top: 0; background: #f1f5f9; z-index: 1; font-weight:700; }
