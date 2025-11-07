@@ -120,7 +120,11 @@ button.danger, .danger{ background:var(--danger); color:#fff; border-color:var(-
 .table thead th .col-resizer:focus{ outline:2px solid #60a5fa; outline-offset:2px }
 .table thead th .col-resizer:focus::after{ opacity:1 }
 
-.toolbar{ position:sticky; top:62px; z-index:10; display:flex; gap:8px; margin:8px 0; padding:8px; background:rgba(248,250,252,.8); backdrop-filter:blur(6px); border:1px solid var(--border); border-radius:10px }
+.toolbar{ position:sticky; top:62px; z-index:10; display:flex; gap:8px; margin:8px 0; padding:8px; background:transparent; backdrop-filter:none; border:0; border-radius:10px }
+/* Remove initial focus/outline emphasis in toolbar */
+.toolbar .btn:focus, .toolbar button:focus, .toolbar a:focus, .toolbar input:focus, .toolbar select:focus{
+  outline:none; box-shadow:none; border-color:var(--border);
+}
 .toolbar-group{ display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 .toolbar-actions{ margin-left:auto; display:flex; align-items:center; gap:8px; flex-wrap:wrap }
 
