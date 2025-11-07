@@ -126,6 +126,12 @@
         <span id="netPayHeader" class="muted"></span>
       </div>
       <div class="panel-body">
+        <!-- Mobile tabs for better readability -->
+        <div class="tabs mobile-only" id="mobileTabs">
+          <button type="button" class="tab-btn active" data-tab="basic">기본정보</button>
+          <button type="button" class="tab-btn" data-tab="earn">급여항목</button>
+          <button type="button" class="tab-btn" data-tab="ded">공제항목</button>
+        </div>
         <div class="main-grid">
           <!-- Basic info sub-panel -->
           <div class="panel sub-panel" id="basicPanel">
@@ -164,6 +170,16 @@
     </div>
   </div>
 </div>
+
+<!-- Mobile bottom action bar -->
+<div class="mob-bar mobile-only" id="mobileBar" style="display:none">
+  <button type="button" class="btn primary" id="mbSave">저장</button>
+  <button type="button" class="btn" id="mbList">사원 목록</button>
+  <button type="button" class="btn" id="mbCopyPrev" {% if is_closed %}disabled{% endif %}>전월 복사</button>
+  <button type="button" class="btn" id="mbExcel">엑셀</button>
+  
+</div>
+<div class="mob-spacer mobile-only" id="mobileSpacer" style="display:none"></div>
 
 <form id="payrollForm" method="post" class="card">
   <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
@@ -1476,14 +1492,15 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     // 보이는 값이 저장에 존재하지 않아도, 선택 시 한 번 계산하여 표시(특히 마감 직후 뷰)
     try{ computeDeductions(base); }catch(_){ }
     try{ applyEmploymentWarnings(base); }catch(_){ }
-    // Mobile: hide list and show main panel after selecting an employee
+    // Mobile: close list drawer and show main after selecting an employee
     try{
       if(isMobile()){
         const list = document.getElementById('panelEmployees');
         const main = document.getElementById('mainPanel');
-        if(list) list.classList.add('mobile-hide');
-        if(main) main.classList.remove('mobile-hide');
-        main?.scrollIntoView({ behavior:'smooth', block:'start' });
+        const backdrop = document.getElementById('drawerBackdrop');
+        if(list){ list.classList.remove('open'); list.classList.add('mobile-hide'); }
+        if(backdrop){ backdrop.style.display='none'; }
+        if(main){ main.classList.remove('mobile-hide'); main.scrollIntoView({ behavior:'smooth', block:'start' }); }
       }
     }catch(_){ }
     updateSplitSummary();
@@ -1684,38 +1701,61 @@ function gridInputChanged(el){
     }
     const sortSel = document.getElementById('splitSort');
     if(sortSel){ sortSel.addEventListener('change', ()=> buildEditList()); }
-    // Mobile-specific toggle: show/hide employee list
+    // Mobile enhancements: tabs, drawer list, bottom bar
     try{
+      const list = document.getElementById('panelEmployees');
+      const main = document.getElementById('mainPanel');
+      const tabs = document.getElementById('mobileTabs');
+      // Tabs: show one sub-panel at a time
+      const setTab = (code)=>{
+        const basic = document.getElementById('basicPanel');
+        const earn = document.getElementById('panelEarnings');
+        const ded = document.getElementById('panelDeductions');
+        [basic,earn,ded].forEach(el=>{ if(el) el.style.display='none'; });
+        if(code==='basic' && basic) basic.style.display='';
+        if(code==='earn' && earn) earn.style.display='';
+        if(code==='ded' && ded) ded.style.display='';
+        if(tabs){ tabs.querySelectorAll('.tab-btn').forEach(b=> b.classList.toggle('active', b.dataset.tab===code)); }
+      };
+      if(isMobile() && tabs){ setTab('basic'); tabs.querySelectorAll('.tab-btn').forEach(btn=> btn.addEventListener('click', ()=> setTab(btn.dataset.tab))); }
+
+      // Drawer: list as overlay
+      let backdrop = document.getElementById('drawerBackdrop');
+      if(!backdrop){ backdrop = document.createElement('div'); backdrop.id='drawerBackdrop'; backdrop.className='drawer-backdrop mobile-only'; document.body.appendChild(backdrop); }
+      let __LOCK_SCROLL_Y = 0;
+      const lockBodyScroll = ()=>{ try{ __LOCK_SCROLL_Y = window.scrollY || document.documentElement.scrollTop || 0; document.body.classList.add('noscroll'); document.body.style.top = `-${__LOCK_SCROLL_Y}px`; }catch(_){} };
+      const unlockBodyScroll = ()=>{ try{ document.body.classList.remove('noscroll'); const y = __LOCK_SCROLL_Y || 0; document.body.style.top=''; window.scrollTo(0, y); }catch(_){} };
+      const openList = ()=>{ if(list){ list.classList.add('mobile-drawer','open'); list.classList.remove('mobile-hide'); } backdrop.style.display='block'; lockBodyScroll(); };
+      const closeList = ()=>{ if(list){ list.classList.add('mobile-drawer'); list.classList.remove('open'); list.classList.add('mobile-hide'); } backdrop.style.display='none'; unlockBodyScroll(); };
       const btn = document.getElementById('mobileToggleList');
-      if(btn){
-        btn.addEventListener('click', ()=>{
-          const list = document.getElementById('panelEmployees');
-          const main = document.getElementById('mainPanel');
-          if(!isMobile()) return;
-          if(list && list.classList.contains('mobile-hide')){
-            list.classList.remove('mobile-hide');
-            if(main) main.classList.add('mobile-hide');
-            list.scrollIntoView({ behavior:'smooth', block:'start' });
-          } else {
-            if(list) list.classList.add('mobile-hide');
-            if(main) main.classList.remove('mobile-hide');
-            main?.scrollIntoView({ behavior:'smooth', block:'start' });
-          }
-        });
-      }
-      // Initial mobile state: show list first for selection
+      if(btn){ btn.addEventListener('click', ()=>{ if(!isMobile()) return; if(list && list.classList.contains('open')) closeList(); else openList(); }); }
+      backdrop.addEventListener('click', closeList);
+      // Initial state on mobile: show list
       if(isMobile()){
-        const list = document.getElementById('panelEmployees');
-        const main = document.getElementById('mainPanel');
-        if(list) list.classList.remove('mobile-hide');
-        if(main) main.classList.add('mobile-hide');
+        if(list){ list.classList.add('mobile-drawer'); list.classList.remove('mobile-hide'); list.classList.add('open'); }
+        if(main){ main.classList.add('mobile-hide'); }
+        lockBodyScroll();
+        const bar = document.getElementById('mobileBar'); const sp = document.getElementById('mobileSpacer');
+        if(bar) bar.style.display='flex'; if(sp) sp.style.display='block';
+        // Bottom bar actions
+        const saveBtn = document.getElementById('mbSave'); const listBtn = document.getElementById('mbList'); const prevBtn = document.getElementById('mbCopyPrev'); const xlsBtn = document.getElementById('mbExcel');
+        if(saveBtn){ saveBtn.addEventListener('click', ()=>{ try{ const form=document.getElementById('payrollForm'); if(form?.requestSubmit){ form.requestSubmit(); } else { form.submit(); } }catch(_){ } }); }
+        if(listBtn){ listBtn.addEventListener('click', ()=>{ if(list && list.classList.contains('open')) closeList(); else openList(); }); }
+        if(prevBtn){ prevBtn.addEventListener('click', ()=>{ try{ prefillFromPrev(); }catch(_){ } }); }
+        if(xlsBtn){ xlsBtn.addEventListener('click', ()=>{ try{ const a=document.getElementById('exportLink'); if(a) window.location.href=a.href; }catch(_){ } }); }
       }
+      // Reset when leaving mobile viewport
       window.addEventListener('resize', ()=>{
         if(!isMobile()){
-          const list = document.getElementById('panelEmployees');
-          const main = document.getElementById('mainPanel');
-          if(list) list.classList.remove('mobile-hide');
-          if(main) main.classList.remove('mobile-hide');
+          if(list){ list.classList.remove('mobile-hide','mobile-drawer','open'); }
+          if(main){ main.classList.remove('mobile-hide'); }
+          if(backdrop){ backdrop.style.display='none'; }
+          unlockBodyScroll();
+          const bar = document.getElementById('mobileBar'); const sp = document.getElementById('mobileSpacer');
+          if(bar) bar.style.display='none'; if(sp) sp.style.display='none';
+          // Show all panels back
+          const basic = document.getElementById('basicPanel'); const earn = document.getElementById('panelEarnings'); const ded = document.getElementById('panelDeductions');
+          [basic,earn,ded].forEach(el=>{ if(el) el.style.display=''; });
         }
       });
     }catch(_){ }
