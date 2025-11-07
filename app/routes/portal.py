@@ -379,6 +379,33 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
         _verify_csrf(request, form.get("csrf_token"))
         rows = parse_rows(form, cols, numeric_fields, date_fields, bool_fields)
 
+    # If an existing record exists and some fields are not present in the form
+    # (e.g., fields hidden for non-admin view), preserve previous values for
+    # those missing keys to avoid unintentional data loss.
+    def _merge_missing(old_rows: list[dict], new_rows: list[dict]) -> list[dict]:
+        # If nothing posted (e.g., view hid most fields), keep previous rows as-is
+        if not new_rows:
+            return old_rows or []
+        if not old_rows:
+            return new_rows
+        merged: list[dict] = []
+        # Only merge for rows that remain present after edit to avoid
+        # resurrecting intentionally removed trailing rows.
+        limit = min(len(old_rows), len(new_rows))
+        for i in range(limit):
+            base = dict(old_rows[i] or {})
+            patch = dict(new_rows[i] or {})
+            base.update(patch)
+            merged.append(base)
+        # If user added new rows beyond previous length, keep them as-is.
+        if len(new_rows) > limit:
+            merged.extend(new_rows[limit:])
+        # If user posted fewer rows (e.g., only the first row visible),
+        # keep the remainder of old rows untouched.
+        elif len(new_rows) < len(old_rows):
+            merged.extend(old_rows[len(new_rows):])
+        return merged
+
     record = (
         db.query(MonthlyPayroll)
         .filter(
@@ -391,6 +418,23 @@ async def save_payroll(request: Request, slug: str, year: int, month: int, db: S
 
     if record and bool(getattr(record, "is_closed", False)):
         return JSONResponse({"ok": False, "error": "month is closed"}, status_code=400)
+
+    # Lookup any previous record to perform merge if needed
+    prev_record = (
+        db.query(MonthlyPayroll)
+        .filter(
+            MonthlyPayroll.company_id == company.id,
+            MonthlyPayroll.year == year,
+            MonthlyPayroll.month == month,
+        )
+        .first()
+    )
+    if prev_record:
+        try:
+            prev_rows = json.loads(prev_record.rows_json or "[]")
+        except Exception:
+            prev_rows = []
+        rows = _merge_missing(prev_rows, rows)
 
     payload_json = json.dumps(rows, ensure_ascii=False)
     if record is None:

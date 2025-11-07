@@ -65,13 +65,14 @@ ENV_VARS=(
   COOKIE_SECURE
   PAYROLL_AUTO_APPLY_DDL
   PAYROLL_ENFORCE_ALEMBIC
+  APP_VERSION
 )
 
 ENV_STR=""
 for key in "${ENV_VARS[@]}"; do
   val=${!key-}
   if [[ -n "${val}" ]]; then
-    if [[ -n "${ENV_STR}" ]]; then ENV_STR+="","; fi
+    if [[ -n "${ENV_STR}" ]]; then ENV_STR+=","; fi
     # shellcheck disable=SC2001
     clean=$(echo -n "${val}" | sed 's/[,]/\\,/g')
     ENV_STR+="${key}=${clean}"

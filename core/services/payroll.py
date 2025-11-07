@@ -293,7 +293,12 @@ def parse_rows(
     rows: List[dict] = []
     for idx in sorted(bucket.keys()):
         row = bucket[idx]
-        if not any(str(v).strip() for v in row.values()):
+        # Treat a row as meaningful if it has any non-empty value OR
+        # if either '사원명' or '사원코드' is present and non-empty. This
+        # allows saving minimal rows identified only by name/code.
+        has_any = any(str(v).strip() for v in row.values())
+        has_identity = bool(str(row.get("사원명", "")).strip() or str(row.get("사원코드", "")).strip())
+        if not (has_any or has_identity):
             continue
         for f in numeric_fields:
             if f in row:

@@ -62,7 +62,7 @@
   <div class="kpi">
     <div class="kpi-title">합계</div>
     <div id="kpiSum" class="kpi-value">0</div>
-    <div class="kpi-sub"><span>필드</span><select id="kpiFieldSelect"></select></div>
+    <div class="kpi-sub"><span>정렬</span><select id="kpiFieldSelect"></select></div>
   </div>
   <div class="kpi">
     <div class="kpi-title">전직원 급여합계</div>
@@ -80,15 +80,20 @@
 <div id="splitView" class="card d-block p-12">
   <div class="split-grid">
     
-    <!-- Left: employee list -->
-    <div class="panel">
+    <!-- Left: employee list (list only) -->
+    <div class="panel" id="panelEmployees">
       <div class="panel-head">
         <strong>사원 목록</strong>
         <div class="flex-1"></div>
-        <input type="search" id="splitSearch" class="maxw-220" placeholder="사원명/코드 검색">
+        <label class="muted" for="splitSort">정렬</label>
+        <select id="splitSort" class="w-120 ctrl-sm">
+          <option value="name_asc">이름 ↑</option>
+          <option value="name_desc">이름 ↓</option>
+        </select>
+        <input type="search" id="splitSearch" class="maxw-160 ctrl-sm" placeholder="사원명 검색">
         {% if not is_closed %}
-        <button type="button" class="btn primary ml-8" data-action="prefillFromPrev">전월 급여 복사</button>
-        <button type="button" class="btn" data-action="addRowGlobal">사원 추가</button>
+        <button type="button" class="btn sm primary ml-8" data-action="prefillFromPrev">전월 복사</button>
+        <button type="button" class="btn sm" data-action="addRowGlobal">사원 추가</button>
         {% endif %}
       </div>
       <div class="panel-body">
@@ -97,60 +102,63 @@
             <table class="list">
           <colgroup id="empColgroup">
             <col class="w-52">
-            <col data-col="1" class="w-120">
-            <col data-col="2" class="w-80">
-            <col data-col="3" class="w-180">
-            <col data-col="4" class="w-110">
-            <col data-col="5" class="w-110">
-            <col data-col="6" class="w-110">
-            <col data-col="7" class="w-110">
+            <col data-col="1" class="w-180">
           </colgroup>
           <thead id="empHead">
             <tr>
               <th class="w-52">#</th>
-              <th data-col="1" data-field="사원코드">사원코드</th>
-              <th data-col="2" data-field="사원명">사원명</th>
-              <th data-col="3" data-field="주민등록번호">주민등록번호</th>
-              <th data-col="4" data-field="입사일">입사일</th>
-              <th data-col="5" data-field="퇴사일">퇴사일</th>
-              <th data-col="6" data-field="휴직일">휴직일</th>
-              <th data-col="7" data-field="휴직종료일">휴직종료일</th>
+              <th data-col="1" data-field="사원명">사원명</th>
             </tr>
           </thead>
           <tbody id="empList"></tbody>
         </table>
           </div>
-          <div class="left-basic card">
-            <h2>기본정보</h2>
-            <div id="basicInfo" class="basic-info"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: main panel with 3-column grid (기본정보/급여항목/공제항목) -->
+    <div class="panel main-panel" id="mainPanel">
+      <div class="panel-head">
+        <strong><span id="selName">급여 입력</span></strong>
+        <div class="flex-1"></div>
+        <button type="button" class="btn ctrl-sm mobile-only" id="mobileToggleList">사원 목록</button>
+        <span id="netPayHeader" class="muted"></span>
+      </div>
+      <div class="panel-body">
+        <div class="main-grid">
+          <!-- Basic info sub-panel -->
+          <div class="panel sub-panel" id="basicPanel">
+            <div class="panel-head"><strong>기본정보</strong></div>
+            <div class="panel-body">
+              <div id="basicInfo" class="basic-info"></div>
+            </div>
           </div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Middle: earnings -->
-    <div class="panel">
-      <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button><button type="button" class="btn ghost" data-action="toggleBasicInfo">기본정보</button><span id="selName" class="muted"></span></div>
-      <div class="panel-body">
-        <table id="earnTable"></table>
-        <div class="summary">
-          <div class="row"><span>지급 합계</span><span id="sumEarnings">0</span></div>
-        </div>
-      </div>
-    </div>
-
-    <!-- Right: deductions + summary -->
-    <div class="panel">
-      <div class="panel-head"><strong>공제항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
-      <div class="panel-body">
-        <table id="dedTable"></table>
-        <div class="summary">
-          <div class="row"><span>공제 합계</span><span id="sumDeductions">0</span></div>
-          <div class="row total"><span>차인지급액</span><span id="sumNet">0</span></div>
-          <div class="row spacer"></div>
-          <div class="row"><span>전직원 지급 합계</span><span id="grandEarnings">0</span></div>
-          <div class="row"><span>전직원 공제 합계</span><span id="grandDeductions">0</span></div>
-          <div class="row"><span>전직원 차인지급액</span><span id="grandNet">0</span></div>
+          <!-- Earnings sub-panel -->
+          <div class="panel sub-panel" id="panelEarnings">
+            <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button></div>
+            <div class="panel-body">
+              <table id="earnTable"></table>
+              <div class="summary">
+                <div class="row"><span>지급 합계</span><span id="sumEarnings">0</span></div>
+              </div>
+            </div>
+          </div>
+          <!-- Deductions sub-panel -->
+          <div class="panel sub-panel" id="panelDeductions">
+            <div class="panel-head"><strong>공제항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
+            <div class="panel-body">
+              <table id="dedTable"></table>
+              <div class="summary">
+                <div class="row"><span>공제 합계</span><span id="sumDeductions">0</span></div>
+                <div class="row total"><span>차인지급액</span><span id="sumNet">0</span></div>
+                <div class="row spacer"></div>
+                <div class="row"><span>전직원 지급 합계</span><span id="grandEarnings">0</span></div>
+                <div class="row"><span>전직원 공제 합계</span><span id="grandDeductions">0</span></div>
+                <div class="row"><span>전직원 차인지급액</span><span id="grandNet">0</span></div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -263,6 +271,11 @@
       // Excel-like navigation in main table: Enter => move right, Shift+Enter => left
       if(fieldName === '주민등록번호'){
         try{ attachSsnHandlers(inp); }catch(e){}
+      }
+      // Validate employment dates live
+      if(fieldName === '입사일' || fieldName === '퇴사일'){
+        inp.addEventListener('input', ()=>{ applyEmploymentWarnings(tr); });
+        inp.addEventListener('change', ()=>{ applyEmploymentWarnings(tr); });
       }
       inp.addEventListener('keydown', (e)=>{
         if(e.key==='Enter'){
@@ -387,11 +400,20 @@
     addRow();
     buildEditList();
     const idx = document.querySelectorAll('#payroll-table tbody tr').length - 1;
+    // Prefill a placeholder name to avoid server skipping fully blank rows
+    try{
+      const base = document.querySelector(`#payroll-table tbody tr[data-idx='${idx}']`) || document.querySelectorAll('#payroll-table tbody tr')[idx];
+      const nameInput = base && base.querySelector(`[name$='[사원명]']`);
+      if(nameInput && !String(nameInput.value||'').trim()){
+        nameInput.value = `신규 사원 ${idx+1}`;
+      }
+      syncListRow(idx);
+    }catch(_){ }
     const listRow = document.querySelector(`#empList tr[data-idx='${idx}']`);
     if(listRow){
       selectEmp(idx, listRow);
-      const focusTarget = listRow.querySelector('input[data-field="사원명"]') || listRow.querySelector('input.list-input');
-      if(focusTarget){ focusTarget.focus(); focusTarget.select?.(); }
+      const bi = document.querySelector('#basicInfo input') || document.querySelector('#earnTable input');
+      if(bi){ bi.focus(); bi.select?.(); }
     }
   }
 
@@ -455,6 +477,43 @@ function nsKey(name){ return STORAGE_NS + name; }
   function inRange(d, start, end){ return d >= start && d <= end; }
   function val(tr, field){ return tr.querySelector(`[name$='[${field}]']`); }
   function setIfEmpty(el, v){ if(!el) return; if(el.type==='checkbox'){ if(!el.checked) el.checked = !!v; } else { if(!el.value) el.value = v; } }
+  function isMobile(){ try{ return window.matchMedia && window.matchMedia('(max-width: 720px)').matches; }catch(_){ return (window.innerWidth||0) <= 720; } }
+
+  // Employment date validation (visual warnings only)
+  function collectEmploymentWarnings(baseTr){
+    const ms = parseDate(monthStart());
+    const me = parseDate(monthEnd());
+    const joinEl = val(baseTr, '입사일');
+    const leaveEl = val(baseTr, '퇴사일');
+    const join = parseDate(joinEl?.value || '');
+    const leave = parseDate(leaveEl?.value || '');
+    const msgs = [];
+    if(join && me && join > me){ msgs.push(`입사일이 급여월(${YEAR}-${pad(MONTH)}) 이후입니다: ${joinEl.value}`); }
+    if(leave && ms && leave < ms){ msgs.push(`퇴사일이 급여월(${YEAR}-${pad(MONTH)}) 이전입니다: ${leaveEl.value}`); }
+    return msgs;
+  }
+  function applyEmploymentWarnings(baseTr){
+    try{
+      const joinBase = val(baseTr, '입사일');
+      const leaveBase = val(baseTr, '퇴사일');
+      const ms = parseDate(monthStart());
+      const me = parseDate(monthEnd());
+      const join = parseDate(joinBase?.value || '');
+      const leave = parseDate(leaveBase?.value || '');
+      if(joinBase){ joinBase.classList.toggle('warn', !!(join && me && join > me)); }
+      if(leaveBase){ leaveBase.classList.toggle('warn', !!(leave && ms && leave < ms)); }
+      const panel = document.getElementById('basicPanel');
+      const body = panel ? panel.querySelector('.panel-body') : null;
+      if(!body) return;
+      let box = document.getElementById('basicWarnBox');
+      if(!box){ box = document.createElement('div'); box.id = 'basicWarnBox'; body.insertBefore(box, body.firstChild); }
+      const msgs = collectEmploymentWarnings(baseTr);
+      if(!msgs.length){ box.innerHTML=''; box.style.display='none'; return; }
+      box.style.display='block';
+      box.className = 'warning-box';
+      box.innerHTML = msgs.map(m=> `<span class="pill-badge pill-danger">⚠ ${m}</span>`).join(' ');
+    }catch(_){ /* ignore */ }
+  }
 
   // 일할계산 도우미: 월 범위/입퇴사/휴직을 고려해 근무일수/총일수 산출
   function computeProrationForRow(baseTr){
@@ -1208,14 +1267,14 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const tw = document.querySelector('.table-wrap'); if(tw) tw.style.display = 'none';
     initSplit();
   }
-  // 기본정보 패널(사원코드/사원명/입퇴사/휴직일) 표시 토글 (기본: 표시)
+  // 기본정보 패널: 항상 표시 (토글 제거)
   const BASIC_INFO_KEY = nsKey('split_show_basic_info');
-  function getShowBasicInfo(){ try{ const v = localStorage.getItem(BASIC_INFO_KEY); return v===null ? true : v==='1'; }catch(e){ return true; } }
-  function setShowBasicInfo(v){ try{ localStorage.setItem(BASIC_INFO_KEY, v ? '1':'0'); }catch(e){} }
-  function toggleBasicInfo(){ const cur = getShowBasicInfo(); setShowBasicInfo(!cur); const active = document.querySelector('#empList tr.active'); const idx = active ? parseInt(active.dataset.idx,10) : 0; selectEmp(idx, active); }
+  function getShowBasicInfo(){ return true; }
+  function setShowBasicInfo(v){ /* no-op */ }
+  function toggleBasicInfo(){ /* no-op */ }
   const GROUP_MAP_KEY = nsKey('payroll_group_map_v1');
   const ALIAS_MAP_KEY = nsKey('payroll_group_alias_v1');
-  const EXCLUDED_META_FIELDS = ['사원코드','사원명','입사일','퇴사일','휴직일','휴직종료일','월 시작일','월 말일','월 총 일수','근무일수','부양가족수','기준보수월액'];
+  const EXCLUDED_META_FIELDS = ['사원코드','사원명','입사일','퇴사일','휴직일','휴직종료일','월 시작일','월 말일','월 총 일수','근무일수','부양가족수','기준보수월액','기준보수월액(국민연금)'];
 
   // Insurance inclusion config: which earnings count for each insurance base
   // Delegate state helpers to global module (fallback to localStorage if absent)
@@ -1290,61 +1349,29 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
   function buildList(){ buildEditList(); }
   function syncListRow(idx){
     const row = document.querySelector(`#empList tr[data-idx='${idx}']`); if(!row) return;
-    const base = document.querySelectorAll('#payroll-table tbody tr')[idx]; if(!base) return;
+    const base = document.querySelector(`#payroll-table tbody tr[data-idx='${idx}']`); if(!base) return;
     const get = (name)=> base.querySelector(`[name$='[${name}]']`);
-    row.querySelectorAll('input.list-input').forEach(inp=>{
-      const field = inp.dataset.field; const src = get(field);
-      if(src && document.activeElement !== inp){
-        const val = src.value || '';
-        inp.value = isNumericField(field) ? formatNumeric(val) : val;
-      }
-    });
-    // Update proration badge and net badge inside '사원명' cell
+    // Name text
     try{
-      const pr = computeProrationForRow(base);
-      const nameInput = row.querySelector("input.list-input[data-field='사원명']");
-      const nameTd = nameInput ? nameInput.closest('td') : null;
-      if(nameTd){
-        let badge = nameTd.querySelector('.pr-badge');
-        if(pr.prorated && pr.total>0){
-          const text = `일할 ${pr.days}/${pr.total} (${pr.percent}%)`;
-          if(!badge){
-            badge = document.createElement('span');
-            badge.className = 'badge badge-prorate pr-badge';
-            badge.style.marginLeft = '6px';
-            nameTd.appendChild(badge);
-          }
-          badge.textContent = text;
-        }else if(badge){
-          badge.remove();
-        }
-        // Net badge
-        const groupsNow = classify();
-        const earnFs = (groupsNow.earnings||[]).map(([f])=>f);
-        const dedFs = (groupsNow.deductions||[]).map(([f])=>f);
-        const sumFields = (arr)=> arr.reduce((acc, f)=>{
-          const el = base.querySelector(`[name$='[${f}]']`); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
-        },0);
-        const earn = sumFields(earnFs); const ded = sumFields(dedFs); const net = earn - ded;
-        let nb = nameTd.querySelector('.np-badge');
-        if(!nb){ nb = document.createElement('span'); nb.className = 'badge badge-net np-badge'; nb.style.marginLeft='6px'; nameTd.appendChild(nb); }
-        nb.textContent = `지급 ${net.toLocaleString('ko-KR')}`;
-      }
+      const nameSpan = row.querySelector('.emp-name');
+      if(nameSpan){ nameSpan.textContent = (get('사원명')?.value || '(이름없음)'); }
+    }catch(_){ }
+    // Amount: earnings (customer pre-close) or net (admin/closed)
+    try{
+      const groupsNow = classify();
+      const earnFs = (groupsNow.earnings||[]).map(([f])=>f);
+      const dedFs = (groupsNow.deductions||[]).map(([f])=>f);
+      const sumFields = (arr)=> arr.reduce((acc, f)=>{
+        const el = base.querySelector(`[name$='[${f}]']`); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
+      },0);
+      const earn = sumFields(earnFs); const ded = sumFields(dedFs); const net = earn - ded;
+      const displayVal = (IS_ADMIN || IS_CLOSED) ? net : earn;
+      const amt = row.querySelector('.emp-amount');
+      if(amt){ amt.textContent = (displayVal ? displayVal.toLocaleString('ko-KR') : '0') + '원'; }
     }catch(_){ }
   }
   function bindProxy(input, base, field, typ){
     if(!base){ input.disabled = true; input.readOnly = true; return; }
-    // If the base input is readOnly (e.g., 4대보험 in portal),
-    // keep the proxy readOnly but still bind so values display and stay in sync.
-    if(base.disabled){ input.disabled = true; input.readOnly = true; return; }
-    if(base.readOnly){ input.readOnly = true; }
-    if(base.type==='checkbox'){
-      input.type = 'checkbox';
-      input.checked = base.checked;
-      input.addEventListener('input', ()=>{ if(input.dataset.comp==='1') return; base.checked = !!input.checked; updateSplitSummary(); });
-      base.addEventListener('change', ()=>{ input.checked = base.checked; updateSplitSummary(); });
-      return;
-    }
     const isNum = (typ==='number') && isNumericField(field);
     const syncFromBase = ()=>{
       const val = base.value || '';
@@ -1355,6 +1382,17 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
         input.value = val;
       }
     };
+    // If base is disabled (e.g., month closed), still show its value but lock edits
+    if(base.disabled){ input.disabled = true; input.readOnly = true; syncFromBase(); return; }
+    // If the base input is readOnly, keep proxy readOnly but bind value
+    if(base.readOnly){ input.readOnly = true; }
+    if(base.type==='checkbox'){
+      input.type = 'checkbox';
+      input.checked = base.checked;
+      input.addEventListener('input', ()=>{ if(input.dataset.comp==='1') return; base.checked = !!input.checked; updateSplitSummary(); });
+      base.addEventListener('change', ()=>{ input.checked = base.checked; updateSplitSummary(); });
+      return;
+    }
     syncFromBase();
     try{ if(isNum) attachNumericHandlers(input, field); }catch(e){}
     if(isNum){
@@ -1404,13 +1442,14 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
   function selectEmp(idx, rowEl){
     currentIdx = idx;
     document.querySelectorAll('#empList tr').forEach(tr=> tr.classList.toggle('active', tr===rowEl));
-    const base = document.querySelectorAll('#payroll-table tbody tr')[idx]; if(!base) return;
+    const base = document.querySelector(`#payroll-table tbody tr[data-idx='${idx}']`) || document.querySelectorAll('#payroll-table tbody tr')[idx]; if(!base) return;
     document.getElementById('selName').textContent = (base.querySelector(`[name$='[사원명]']`)?.value||'') || (base.querySelector(`[name$='[사원코드]']`)?.value||'');
     const bi = document.getElementById('basicInfo');
     if(bi){
-      const card = bi.closest('.left-basic') || bi;
-      if(getShowBasicInfo()){ card.style.display='block'; bi.style.display='grid'; buildBasicInfo(base); }
-      else { bi.style.display='none'; bi.innerHTML=''; if(card!==bi) card.style.display='none'; }
+      const card = bi.closest('.left-basic') || document.getElementById('basicPanel') || bi;
+      if(card) card.style.display='block';
+      bi.style.display='grid';
+      buildBasicInfo(base);
     }
     const { earnings, deductions } = classify();
     const earnT = document.getElementById('earnTable'); const dedT = document.getElementById('dedTable');
@@ -1431,40 +1470,76 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     if (IS_ADMIN || IS_CLOSED) {
       deductions.forEach(([f,l,t])=> dedT.appendChild(row(f,l,t)));
     } else {
-      const tr = document.createElement('tr');
-      const td = document.createElement('td'); td.colSpan = 2; td.className = 'muted';
-      td.textContent = '마감 후 공개됩니다.';
-      tr.appendChild(td);
-      dedT.appendChild(tr);
+      // 고객 페이지에서는 마감 전 공제항목 입력을 표시하지 않음 (메시지도 숨김)
+      dedT.innerHTML = '';
     }
+    // 보이는 값이 저장에 존재하지 않아도, 선택 시 한 번 계산하여 표시(특히 마감 직후 뷰)
+    try{ computeDeductions(base); }catch(_){ }
+    try{ applyEmploymentWarnings(base); }catch(_){ }
+    // Mobile: hide list and show main panel after selecting an employee
+    try{
+      if(isMobile()){
+        const list = document.getElementById('panelEmployees');
+        const main = document.getElementById('mainPanel');
+        if(list) list.classList.add('mobile-hide');
+        if(main) main.classList.remove('mobile-hide');
+        main?.scrollIntoView({ behavior:'smooth', block:'start' });
+      }
+    }catch(_){ }
     updateSplitSummary();
   }
   function buildBasicInfo(base){
     const c = document.getElementById('basicInfo'); if(!c) return; c.innerHTML='';
-    const fields = [
-      ['사원코드','text'],
-      ['사원명','text'],
-      ['입사일','date'],
-      ['퇴사일','date'],
-      ['휴직일','date'],
-      ['휴직종료일','date'],
-      ['부양가족수','number'],
-      ['기준보수월액','number']
-    ];
+    // 고객 페이지에서는 사원코드/부양가족수/기준보수월액을 숨깁니다. (관리자는 모두 표시)
+    const fields = (function(){
+      const base = [
+        ['사원명','text'],
+        ['주민등록번호','text'],
+        ['입사일','date'],
+        ['퇴사일','date'],
+        ['휴직일','date'],
+        ['휴직종료일','date'],
+      ];
+      if(IS_ADMIN){
+        base.unshift(['사원코드','text']);
+        base.push(['부양가족수','number']);
+        base.push(['기준보수월액','number']);
+      }
+      return base;
+    })();
     fields.forEach(([field,typ])=>{
       const baseInput = base.querySelector(`[name$='[${field}]']`);
       if(!baseInput) return;
       const wrap = document.createElement('div'); wrap.className='pair';
-      const lab = document.createElement('label'); lab.textContent = field; wrap.appendChild(lab);
+      const lab = document.createElement('label');
+      try{ const meta = TABLE_META.map && TABLE_META.map.get(field); lab.textContent = (meta && meta.label) ? meta.label : field; }catch(_){ lab.textContent = field; }
+      wrap.appendChild(lab);
       const inp = document.createElement('input'); inp.type = (typ==='date')? 'date' : (typ==='number' ? 'number':'text'); inp.value = baseInput.value || '';
-      if(field==='기준보수월액' && !IS_ADMIN){ inp.disabled = true; }
+      if(field==='주민등록번호'){
+        try{ attachSsnHandlers(inp); }catch(_){ }
+      }
+      // 잠금 정책: 마감 시 전체 비활성화, 그 외엔 '기준보수월액'은 관리자만 수정 가능
+      if(IS_CLOSED || (field==='기준보수월액' && !IS_ADMIN)){
+        inp.disabled = true; inp.readOnly = true;
+      }
       if(typ==='number'){ inp.setAttribute('inputmode','numeric'); inp.setAttribute('step','1'); }
-      inp.addEventListener('input', (e)=>{ if(e.isComposing) return; baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
-      inp.addEventListener('compositionend', ()=>{ baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
+      if(!IS_CLOSED){
+        inp.addEventListener('input', (e)=>{ if(e.isComposing) return; baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
+        inp.addEventListener('compositionend', ()=>{ baseInput.value = inp.value; if(field==='부양가족수' || field==='기준보수월액'){ try{ computeDeductions(base.closest('tr')); }catch(_){} } syncListRow(currentIdx); scheduleKpiUpdate(); updateSplitSummary(); });
+        if(field==='입사일' || field==='퇴사일'){
+          const reval = ()=> applyEmploymentWarnings(base.closest('tr'));
+          inp.addEventListener('input', reval);
+          inp.addEventListener('change', reval);
+          baseInput.addEventListener('input', reval);
+          baseInput.addEventListener('change', reval);
+        }
+      }
       baseInput.addEventListener('input', ()=>{ inp.value = baseInput.value; });
       wrap.appendChild(inp);
       c.appendChild(wrap);
     });
+    // Initial warnings render for the selected row
+    try{ applyEmploymentWarnings(base.closest('tr')); }catch(_){ }
   }
   function updateSplitSummary(){
     const base = document.querySelectorAll('#payroll-table tbody tr')[currentIdx]; if(!base) return;
@@ -1474,13 +1549,28 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const eEl = document.getElementById('sumEarnings');
     const dEl = document.getElementById('sumDeductions');
     const nEl = document.getElementById('sumNet');
+    const nRow = nEl ? nEl.parentElement : null;
+    const gdRow = document.getElementById('grandDeductions') ? document.getElementById('grandDeductions').parentElement : null;
+    const gnRow = document.getElementById('grandNet') ? document.getElementById('grandNet').parentElement : null;
     eEl.textContent = earn.toLocaleString('ko-KR'); eEl.classList.toggle('neg', earn < 0);
     if (IS_ADMIN || IS_CLOSED) {
       dEl.textContent = ded.toLocaleString('ko-KR'); dEl.classList.toggle('neg', ded < 0);
-      nEl.textContent = net.toLocaleString('ko-KR'); nEl.classList.toggle('neg', net < 0);
+      if(nEl){ nEl.textContent = net.toLocaleString('ko-KR'); nEl.classList.toggle('neg', net < 0); }
+      if(nRow){ nRow.style.display = ''; }
+      if(gdRow){ gdRow.style.display = ''; }
+      if(gnRow){ gnRow.style.display = ''; }
+      try{ const kd = document.getElementById('kpiDeduct'); const tile = kd && kd.parentElement; if(tile){ tile.style.display = ''; } }catch(_){ }
+      if(gnRow){ gnRow.style.display = ''; }
+      try{ const hdr=document.getElementById('netPayHeader'); if(hdr){ hdr.textContent=`지급 예정 ${net.toLocaleString('ko-KR')}원`; hdr.classList.toggle('neg', net<0); } }catch(_){ }
     } else {
-      dEl.textContent = '—'; dEl.classList.remove('neg');
-      nEl.textContent = '—'; nEl.classList.remove('neg');
+      // 고객 페이지에서 마감 전: 공제 합계는 표시, 차인지급액은 숨김, 전직원 공제합계도 숨김
+      dEl.textContent = ded.toLocaleString('ko-KR'); dEl.classList.remove('neg');
+      if(nRow){ nRow.style.display = 'none'; }
+      if(gdRow){ gdRow.style.display = 'none'; }
+      if(gnRow){ gnRow.style.display = 'none'; }
+      // Hide KPI tile for '전직원 차인지급액'
+      try{ const kd = document.getElementById('kpiDeduct'); const tile = kd && kd.parentElement; if(tile){ tile.style.display = 'none'; } }catch(_){ }
+      try{ const hdr=document.getElementById('netPayHeader'); if(hdr){ hdr.textContent=''; hdr.classList.remove('neg'); } }catch(_){ }
     }
   }
   // Editable list in left panel
@@ -1509,13 +1599,24 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const __earnFields = (groupsForList.earnings||[]).map(([f])=>f);
     const __dedFields = (groupsForList.deductions||[]).map(([f])=>f);
     const fragment = document.createDocumentFragment();
-    document.querySelectorAll('#payroll-table tbody tr').forEach((tr, idx)=>{
+    // Sort rows by name if requested
+    const sortSel = document.getElementById('splitSort');
+    const sort = (sortSel && sortSel.value) || 'name_asc';
+    const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
+    rows.sort((a,b)=>{
+      const getName = (row)=> (row.querySelector("[name$='[사원명]']")?.value || '').toString().toLowerCase();
+      const an = getName(a), bn = getName(b);
+      if(sort==='name_desc') return bn.localeCompare(an);
+      return an.localeCompare(bn);
+    });
+
+    rows.forEach((tr, idx)=>{
       const get = (name)=> tr.querySelector(`[name$='[${name}]']`);
-      const code = get('사원코드')?.value || '';
       const name = get('사원명')?.value || '';
-      if(q && !(String(code).toLowerCase().includes(q) || String(name).toLowerCase().includes(q))) return;
+      if(q && !(String(name).toLowerCase().includes(q))) return;
       const rowEl = document.createElement('tr');
-      rowEl.dataset.idx = idx;
+      const baseIdx = parseInt(tr.getAttribute('data-idx')||String(idx), 10);
+      rowEl.dataset.idx = baseIdx;
       rowEl.classList.add('js-emp-row');
       const noTd = document.createElement('td');
       noTd.textContent = idx + 1;
@@ -1523,58 +1624,22 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
       fields.forEach(([field, typ])=>{
         const base = get(field);
         const val = base ? base.value : '';
-        const inputType = typ === 'date' ? 'date' : 'text';
         const td = document.createElement('td');
-        const input = document.createElement('input');
-        input.className = 'list-input';
-        input.type = inputType;
-        input.dataset.field = field;
-        input.value = val || '';
-        input.style.width = '100%';
-        if(field === '사원명'){ input.style.minWidth = '80px'; }
-        if(field === '사원코드'){ input.style.minWidth = '140px'; }
-        if(field === '주민등록번호'){
-          input.style.minWidth = '180px';
-          input.placeholder = '000000-0000000';
-          input.setAttribute('inputmode', 'numeric');
-        }
-        if(typ === 'number'){
-          input.setAttribute('inputmode', 'numeric');
-          input.setAttribute('step', '1');
-          try{ attachNumericHandlers(input, field); }catch(_){}
-        }
-        if(field === '주민등록번호'){
-          try{ attachSsnHandlers(input); }catch(_){}
-        }
-        const readOnly = ((typeof IS_CLOSED !== 'undefined' && IS_CLOSED) || !base || (!IS_ADMIN && field === '사원코드'));
-        if(readOnly){ input.disabled = true; }
-        input.addEventListener('compositionstart', ()=>{ input.dataset.comp = '1'; });
-        input.addEventListener('compositionend', ()=>{ input.dataset.comp = ''; gridInputChanged(input); });
-        input.addEventListener('input', (e)=>{ if(e.isComposing || input.dataset.comp === '1') return; gridInputChanged(input); });
-        td.appendChild(input);
-        // Inline proration badge next to name for visibility
-        if(field === '사원명'){
-          try{
-            const pr = computeProrationForRow(tr);
-            if(pr && pr.prorated && pr.total>0){
-              const b = document.createElement('span');
-              b.className = 'badge badge-prorate pr-badge';
-              b.style.marginLeft = '6px';
-              b.textContent = `일할 ${pr.days}/${pr.total} (${pr.percent}%)`;
-              td.appendChild(b);
-            }
-            // Net pay quick badge
-            const sumFields = (arr)=> arr.reduce((acc, f)=>{
-              const el = get(f); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
-            },0);
-            const earn = sumFields(__earnFields); const ded = sumFields(__dedFields); const net = earn - ded;
-            const nb = document.createElement('span');
-            nb.className = 'badge badge-net np-badge';
-            nb.style.marginLeft = '6px';
-            nb.textContent = `지급 ${net.toLocaleString('ko-KR')}`;
-            td.appendChild(nb);
-          }catch(_){ }
-        }
+        // Non-editable compact row: name text + right-side net badge + status chip
+        const wrap = document.createElement('div'); wrap.className = 'emp-row';
+        const nameSpan = document.createElement('span'); nameSpan.textContent = val || '(이름없음)'; nameSpan.className='emp-name'; wrap.appendChild(nameSpan);
+        const right = document.createElement('div'); right.className = 'emp-right';
+        try{
+          const sumFields = (arr)=> arr.reduce((acc, f)=>{ const el = get(f); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v); },0);
+          const earn = sumFields(__earnFields); const ded = sumFields(__dedFields); const net = earn - ded;
+          const displayVal = (IS_ADMIN || IS_CLOSED) ? net : earn;
+          const amt = document.createElement('span');
+          amt.className = 'emp-amount';
+          amt.textContent = (displayVal ? displayVal.toLocaleString('ko-KR') : '0') + '원';
+          right.appendChild(amt);
+        }catch(_){ }
+        td.appendChild(wrap);
+        td.appendChild(right);
         rowEl.appendChild(td);
       });
       // proration indicator now inline with name cell (no extra column)
@@ -1585,6 +1650,7 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
     if(active){ active.classList.add('active'); }
   }
+
 
 function gridInputChanged(el){
     if(el.dataset.comp==='1') return; // avoid IME mid-composition sync
@@ -1616,6 +1682,43 @@ function gridInputChanged(el){
       s.addEventListener('compositionstart', ()=>{ s.dataset.comp='1'; });
       s.addEventListener('compositionend', ()=>{ s.dataset.comp=''; buildEditList(); });
     }
+    const sortSel = document.getElementById('splitSort');
+    if(sortSel){ sortSel.addEventListener('change', ()=> buildEditList()); }
+    // Mobile-specific toggle: show/hide employee list
+    try{
+      const btn = document.getElementById('mobileToggleList');
+      if(btn){
+        btn.addEventListener('click', ()=>{
+          const list = document.getElementById('panelEmployees');
+          const main = document.getElementById('mainPanel');
+          if(!isMobile()) return;
+          if(list && list.classList.contains('mobile-hide')){
+            list.classList.remove('mobile-hide');
+            if(main) main.classList.add('mobile-hide');
+            list.scrollIntoView({ behavior:'smooth', block:'start' });
+          } else {
+            if(list) list.classList.add('mobile-hide');
+            if(main) main.classList.remove('mobile-hide');
+            main?.scrollIntoView({ behavior:'smooth', block:'start' });
+          }
+        });
+      }
+      // Initial mobile state: show list first for selection
+      if(isMobile()){
+        const list = document.getElementById('panelEmployees');
+        const main = document.getElementById('mainPanel');
+        if(list) list.classList.remove('mobile-hide');
+        if(main) main.classList.add('mobile-hide');
+      }
+      window.addEventListener('resize', ()=>{
+        if(!isMobile()){
+          const list = document.getElementById('panelEmployees');
+          const main = document.getElementById('mainPanel');
+          if(list) list.classList.remove('mobile-hide');
+          if(main) main.classList.remove('mobile-hide');
+        }
+      });
+    }catch(_){ }
   }
 
   // Keyboard navigation: Enter = move down same column
@@ -2095,6 +2198,13 @@ function gridInputChanged(el){
     addRowGlobal: ()=> addRowGlobal(),
     openGroupModal: ()=> openGroupModal(),
     toggleBasicInfo: ()=> toggleBasicInfo(),
+    toggleDensity: ()=> {
+      try{
+        const cur = localStorage.getItem(nsKey('payroll_density')) || 'normal';
+        const next = (cur==='dense') ? 'comfortable' : 'dense';
+        setDensity(next);
+      }catch(_){ }
+    },
     openCalcConfig: ()=> openCalcConfig(),
     openExemptConfig: ()=> openExemptConfig(),
     openProrateConfig: ()=> openProrateConfig(),
