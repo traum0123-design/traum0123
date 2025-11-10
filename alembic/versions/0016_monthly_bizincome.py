@@ -26,8 +26,8 @@ def upgrade() -> None:
         sa.Column('rows_json', sa.Text(), nullable=False, server_default='[]'),
         sa.Column('updated_at', sa.DateTime(timezone=True), nullable=True),
         sa.Column('is_closed', sa.Boolean(), nullable=False, server_default=sa.false()),
+        sa.UniqueConstraint('company_id', 'year', 'month', name='uq_bizincome_company_month'),
     )
-    op.create_unique_constraint('uq_bizincome_company_month', 'monthly_bizincome', ['company_id', 'year', 'month'])
     op.create_index('ix_bizincome_company_year_month', 'monthly_bizincome', ['company_id', 'year', 'month'])
 
 
