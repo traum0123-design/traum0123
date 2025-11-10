@@ -17,7 +17,7 @@
 
 <div class="card p-16">
   <div style="overflow:auto;">
-    <table class="table w-100">
+    <table id="bizincomeTable" class="table w-100 biz-table">
       <thead>
         <tr>
           <th class="w-160">성명</th>
@@ -48,7 +48,7 @@
   </div>
   {% if not is_closed %}
   <div class="mt-12">
-    <button type="button" class="btn" id="addRowBtn">행 추가</button>
+    <button type="button" class="btn secondary sm" id="addRowBtn">행 추가</button>
   </div>
   {% endif %}
 </div>
@@ -62,6 +62,8 @@
 
   function fmt(n){ if(!Number.isFinite(n)) return '0'; return n.toLocaleString('ko-KR'); }
   function parseNum(v){ const n = Number(String(v||'').replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
+  function sanitizeNumericInput(el){ el.value = String(el.value||'').replace(/[^\d.-]/g,''); }
+  function formatNumericInput(el){ const n = parseNum(el.value); el.value = n ? n.toLocaleString('ko-KR') : ''; }
 
   function calcRow(row){
     const amount = parseNum(row.amount);
@@ -79,7 +81,7 @@
     trs.forEach(tr=>{
       const row = tr._row || {};
       calcRow(row);
-      tr.querySelector('[data-field="amount"]').value = row.amount || '';
+      tr.querySelector('[data-field="amount"]').value = row.amount ? fmt(row.amount) : '';
       tr.querySelector('[data-field="rate"]').value = row.rate || 3;
       tr.querySelector('[data-field="tax"]').textContent = fmt(row.tax);
       tr.querySelector('[data-field="local"]').textContent = fmt(row.local);
@@ -98,8 +100,14 @@
     tr._row = row;
     tr.querySelector('[data-field="name"]').addEventListener('input', e=>{ row.name = e.target.value; });
     tr.querySelector('[data-field="pid"]').addEventListener('input', e=>{ row.pid = e.target.value; });
-    tr.querySelector('[data-field="amount"]').addEventListener('input', e=>{ row.amount = parseNum(e.target.value); recalcAll(); });
-    tr.querySelector('[data-field="rate"]').addEventListener('input', e=>{ row.rate = parseNum(e.target.value)||3; recalcAll(); });
+    const amtEl = tr.querySelector('[data-field="amount"]');
+    const rateEl = tr.querySelector('[data-field="rate"]');
+    amtEl.addEventListener('focus', ()=> sanitizeNumericInput(amtEl));
+    amtEl.addEventListener('blur', ()=>{ row.amount = parseNum(amtEl.value); formatNumericInput(amtEl); recalcAll(); });
+    amtEl.addEventListener('input', ()=>{ row.amount = parseNum(amtEl.value); });
+    rateEl.addEventListener('focus', ()=> sanitizeNumericInput(rateEl));
+    rateEl.addEventListener('blur', ()=>{ row.rate = parseNum(rateEl.value)||3; formatNumericInput(rateEl); recalcAll(); });
+    rateEl.addEventListener('input', ()=>{ row.rate = parseNum(rateEl.value)||3; });
     tr.querySelector('[data-action="remove"]').addEventListener('click', ()=>{
       tr.remove(); recalcAll();
     });
@@ -108,15 +116,15 @@
   function addRow(row){
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="text" data-field="name" placeholder="성명" class="w-160"></td>
-      <td><input type="text" data-field="pid" placeholder="생년월일/외국인번호" class="w-200"></td>
-      <td class="text-right"><input type="text" data-field="amount" class="w-140 text-right" inputmode="numeric"></td>
-      <td class="text-right"><input type="text" data-field="rate" class="w-100 text-right" value="3" inputmode="numeric"></td>
+      <td><input type="text" data-field="name" placeholder="성명" class="w-160 biz-inp"></td>
+      <td><input type="text" data-field="pid" placeholder="생년월일/외국인번호" class="w-200 biz-inp"></td>
+      <td class="text-right"><input type="text" data-field="amount" class="w-140 text-right biz-inp num" inputmode="numeric" placeholder="0"></td>
+      <td class="text-right"><input type="text" data-field="rate" class="w-100 text-right biz-inp num" value="3" inputmode="numeric" placeholder="3"></td>
       <td class="text-right"><span data-field="tax">0</span></td>
       <td class="text-right"><span data-field="local">0</span></td>
       <td class="text-right"><span data-field="total">0</span></td>
       <td class="text-right"><span data-field="net">0</span></td>
-      <td><button type="button" class="btn btn-sm" data-action="remove">삭제</button></td>
+      <td><button type="button" class="btn danger sm" data-action="remove">삭제</button></td>
     `;
     rowsBody.appendChild(tr);
     const r = Object.assign({name:'', pid:'', amount:0, rate:3}, row||{});
