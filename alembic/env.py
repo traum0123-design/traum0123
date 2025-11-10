@@ -21,12 +21,23 @@ target_metadata = Base.metadata
 
 
 def get_url() -> str:
-    # Prefer env var; fall back to config sqlalchemy.url or local SQLite
-    return (
-        os.getenv("DATABASE_URL")
-        or config.get_main_option("sqlalchemy.url")
-        or "sqlite:///./payroll_portal/app.db"
-    )
+    """Resolve database URL safely.
+
+    Priority:
+      1) DATABASE_URL env var (if set and non-empty)
+      2) sqlalchemy.url from alembic.ini (ignore unresolved placeholders like "${DATABASE_URL}")
+      3) Local SQLite fallback for dev
+    """
+    env_url = (os.getenv("DATABASE_URL") or "").strip()
+    if env_url:
+        return env_url
+
+    ini_url = (config.get_main_option("sqlalchemy.url") or "").strip()
+    # If ini contains a placeholder like "${DATABASE_URL}", ignore it
+    if ini_url.startswith("${") and ini_url.endswith("}"):
+        ini_url = ""
+
+    return ini_url or "sqlite:///./payroll_portal/app.db"
 
 
 def run_migrations_offline() -> None:
