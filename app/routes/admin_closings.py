@@ -8,9 +8,10 @@ from sqlalchemy.orm import Session
 from sqlalchemy import and_, or_
 
 from payroll_api.database import get_db
-from core.models import Company, MonthlyPayroll, ExtraField, FieldPref
+from core.models import Company, MonthlyPayroll, MonthlyBizIncome, ExtraField, FieldPref
 from core.services.audit import record_event
 from core.exporter import build_salesmap_workbook_stream_spooled as build_workbook
+from core.exporter import build_bizincome_workbook_stream_spooled as build_biz_workbook
 from core.utils.cursor import encode_cursor, decode_cursor
 
 from .portal import (
@@ -67,6 +68,7 @@ def closings_data(
     to: Optional[str] = None,   # yyyy-mm
     only_closed: bool = False,
     status: Optional[str] = None,  # 'all' | 'closed' | 'progress' | 'none'
+    typ: Optional[str] = None,  # 'payroll' | 'bizincome'
     fill_range: bool = False,
     limit: int = 50,
     cursor: Optional[str] = None,
@@ -75,34 +77,65 @@ def closings_data(
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
 
-    q = db.query(MonthlyPayroll, Company).join(Company, Company.id == MonthlyPayroll.company_id)
+    tval = (typ or 'payroll').strip().lower()
+    if tval not in {'payroll','bizincome'}:
+        tval = 'payroll'
+    q = None
+    if tval == 'payroll':
+        q = db.query(MonthlyPayroll, Company).join(Company, Company.id == MonthlyPayroll.company_id)
+    else:
+        q = db.query(MonthlyBizIncome, Company).join(Company, Company.id == MonthlyBizIncome.company_id)
     if company_id:
-        q = q.filter(MonthlyPayroll.company_id == int(company_id))
+        if tval == 'payroll':
+            q = q.filter(MonthlyPayroll.company_id == int(company_id))
+        else:
+            q = q.filter(MonthlyBizIncome.company_id == int(company_id))
     # Backward-compatibility: only_closed takes precedence for SQL filtering
     if only_closed or (status and status == 'closed'):
-        q = q.filter(MonthlyPayroll.is_closed == True)  # noqa: E712
+        if tval == 'payroll':
+            q = q.filter(MonthlyPayroll.is_closed == True)  # noqa: E712
+        else:
+            q = q.filter(MonthlyBizIncome.is_closed == True)  # noqa: E712
 
     if frm:
         fy, fm = _parse_month(frm)
-        q = q.filter(or_(MonthlyPayroll.year > fy, and_(MonthlyPayroll.year == fy, MonthlyPayroll.month >= fm)))
+        if tval == 'payroll':
+            q = q.filter(or_(MonthlyPayroll.year > fy, and_(MonthlyPayroll.year == fy, MonthlyPayroll.month >= fm)))
+        else:
+            q = q.filter(or_(MonthlyBizIncome.year > fy, and_(MonthlyBizIncome.year == fy, MonthlyBizIncome.month >= fm)))
     if to:
         ty, tm = _parse_month(to)
-        q = q.filter(or_(MonthlyPayroll.year < ty, and_(MonthlyPayroll.year == ty, MonthlyPayroll.month <= tm)))
+        if tval == 'payroll':
+            q = q.filter(or_(MonthlyPayroll.year < ty, and_(MonthlyPayroll.year == ty, MonthlyPayroll.month <= tm)))
+        else:
+            q = q.filter(or_(MonthlyBizIncome.year < ty, and_(MonthlyBizIncome.year == ty, MonthlyBizIncome.month <= tm)))
 
     # order desc by default (recent first)
-    q = q.order_by(MonthlyPayroll.year.desc(), MonthlyPayroll.month.desc(), MonthlyPayroll.id.desc())
+    if tval == 'payroll':
+        q = q.order_by(MonthlyPayroll.year.desc(), MonthlyPayroll.month.desc(), MonthlyPayroll.id.desc())
+    else:
+        q = q.order_by(MonthlyBizIncome.year.desc(), MonthlyBizIncome.month.desc(), MonthlyBizIncome.id.desc())
 
     if cursor:
         try:
             cur = decode_cursor(cursor)
             cy = int(cur.get("year")); cm = int(cur.get("month")); cid = int(cur.get("id"))
-            q = q.filter(
-                or_(
-                    MonthlyPayroll.year < cy,
-                    and_(MonthlyPayroll.year == cy, MonthlyPayroll.month < cm),
-                    and_(MonthlyPayroll.year == cy, MonthlyPayroll.month == cm, MonthlyPayroll.id < cid),
+            if tval == 'payroll':
+                q = q.filter(
+                    or_(
+                        MonthlyPayroll.year < cy,
+                        and_(MonthlyPayroll.year == cy, MonthlyPayroll.month < cm),
+                        and_(MonthlyPayroll.year == cy, MonthlyPayroll.month == cm, MonthlyPayroll.id < cid),
+                    )
                 )
-            )
+            else:
+                q = q.filter(
+                    or_(
+                        MonthlyBizIncome.year < cy,
+                        and_(MonthlyBizIncome.year == cy, MonthlyBizIncome.month < cm),
+                        and_(MonthlyBizIncome.year == cy, MonthlyBizIncome.month == cm, MonthlyBizIncome.id < cid),
+                    )
+                )
         except Exception:
             return JSONResponse({"ok": False, "error": "invalid cursor"}, status_code=400)
 
@@ -127,6 +160,7 @@ def closings_data(
             "updated_at": rec.updated_at.isoformat() if getattr(rec, "updated_at", None) else None,
             "rows_count": rcnt,
             "status": status,
+            "typ": tval,
         }
 
     # If requested and range fully provided for a specific company, fill missing months
@@ -162,6 +196,7 @@ def closings_data(
                         "updated_at": None,
                         "rows_count": 0,
                         "status": "none",
+                        "typ": (typ or 'payroll').strip().lower() if typ else 'payroll',
                     })
                 else:
                     items.append(item)
@@ -195,7 +230,7 @@ def export_zip(
     if not _is_admin(request):
         return JSONResponse({"ok": False, "error": "forbidden"}, status_code=403)
     # Build selection map: either (company_id + months) or sel=company:yyy-mm list
-    selections: dict[int, list[tuple[int,int]]] = {}
+    selections: dict[int, list[tuple[int,int,str]]] = {}
     # Path 1: explicit 'sel' pairs
     sels = []
     try:
@@ -205,10 +240,19 @@ def export_zip(
     if sels:
         for s in sels:
             try:
-                cid_str, mon = str(s).split(":", 1)
+                parts = str(s).split(":")
+                if len(parts) == 3:
+                    cid_str, mon, typ = parts
+                elif len(parts) == 2:
+                    cid_str, mon = parts; typ = 'payroll'
+                else:
+                    continue
                 y, m = _parse_month(mon)
                 cid = int(cid_str)
-                selections.setdefault(cid, []).append((y, m))
+                tval = (typ or 'payroll').strip().lower()
+                if tval not in {'payroll','bizincome'}:
+                    tval = 'payroll'
+                selections.setdefault(cid, []).append((y, m, tval))
             except Exception:
                 continue
     else:
@@ -222,11 +266,11 @@ def export_zip(
             months = list(month or [])
         if not months or not company_id:
             return JSONResponse({"ok": False, "error": "no months selected"}, status_code=400)
-        lst: list[tuple[int,int]] = []
+        lst: list[tuple[int,int,str]] = []
         for mon in months:
             try:
                 y, m = _parse_month(mon)
-                lst.append((y,m))
+                lst.append((y,m,'payroll'))
             except Exception:
                 continue
         if not lst:
@@ -238,9 +282,9 @@ def export_zip(
     with zipfile.ZipFile(spooled, mode="w", compression=zipfile.ZIP_DEFLATED) as zf:
         from core.schema import DEFAULT_COLUMNS
         import re
-        def _make_filename(company_name: str, y: int, m: int) -> str:
+        def _make_filename(company_name: str, y: int, m: int, kind: str) -> str:
             tail = f"{y%100:02d}{m:02d}"
-            title = f"{company_name}_급여_{tail}"
+            title = f"{company_name}_{'급여' if kind=='payroll' else '사업'}_{tail}"
             # sanitize for zip entry (avoid path separators and reserved characters)
             title = re.sub(r'[\\/:*?"<>|]+', '_', title)
             title = title.replace(' ', '')
@@ -266,32 +310,46 @@ def export_zip(
                     ap[p.field] = p.alias
             all_cols = list(DEFAULT_COLUMNS) + [(e.name, e.label, e.typ or 'number') for e in extras]
             seen_pairs = set()
-            for (y, m) in pairs:
-                key = (y, m)
+            for (y, m, kind) in pairs:
+                key = (y, m, kind)
                 if key in seen_pairs: continue
                 seen_pairs.add(key)
-                rec = (
-                    db.query(MonthlyPayroll)
-                    .filter(MonthlyPayroll.company_id == comp.id, MonthlyPayroll.year == y, MonthlyPayroll.month == m)
-                    .first()
-                )
-                if not rec:
-                    continue
-                try:
-                    rows = json.loads(rec.rows_json or "[]")
-                except Exception:
-                    rows = []
-                bio = build_workbook(
-                    company_slug=comp.slug,
-                    year=y,
-                    month=m,
-                    rows=rows,
-                    all_columns=all_cols,
-                    group_prefs=gp,
-                    alias_prefs=ap,
-                )
+                if kind == 'payroll':
+                    rec = (
+                        db.query(MonthlyPayroll)
+                        .filter(MonthlyPayroll.company_id == comp.id, MonthlyPayroll.year == y, MonthlyPayroll.month == m)
+                        .first()
+                    )
+                    if not rec:
+                        continue
+                    try:
+                        rows = json.loads(rec.rows_json or "[]")
+                    except Exception:
+                        rows = []
+                    bio = build_workbook(
+                        company_slug=comp.slug,
+                        year=y,
+                        month=m,
+                        rows=rows,
+                        all_columns=all_cols,
+                        group_prefs=gp,
+                        alias_prefs=ap,
+                    )
+                else:
+                    rec = (
+                        db.query(MonthlyBizIncome)
+                        .filter(MonthlyBizIncome.company_id == comp.id, MonthlyBizIncome.year == y, MonthlyBizIncome.month == m)
+                        .first()
+                    )
+                    if not rec:
+                        continue
+                    try:
+                        rows = json.loads(rec.rows_json or "[]")
+                    except Exception:
+                        rows = []
+                    bio = build_biz_workbook(company_slug=comp.slug, year=y, month=m, rows=rows)
                 bio.seek(0)
-                arcname = _make_filename(comp.name or comp.slug, y, m)
+                arcname = _make_filename(comp.name or comp.slug, y, m, kind)
                 zf.writestr(arcname, bio.read())
 
     # audit (best effort)
@@ -308,6 +366,6 @@ def export_zip(
 
     spooled.seek(0)
     from urllib.parse import quote
-    fname = f"closings_{comp.slug}.zip"
+    fname = f"closings.zip"
     headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"}
     return StreamingResponse(spooled, media_type="application/zip", headers=headers)

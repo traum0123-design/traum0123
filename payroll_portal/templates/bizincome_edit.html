@@ -7,23 +7,48 @@
 <div class="toolbar">
   <div class="toolbar-group">
     <a class="btn" href="{{ portal_home_url }}">월 변경</a>
+    <a id="exportLink" class="btn primary" data-skip-unsaved="1" href="{{ url_for('portal.export_bizincome', slug=slug, year=year, month=month) }}">엑셀 다운로드</a>
   </div>
   <div class="toolbar-actions">
     {% if not is_closed %}
       <button type="button" class="btn primary" id="saveBtn">저장</button>
+    {% else %}
+      <span class="pill-badge pill-danger">마감완료</span>
+    {% endif %}
+    {% if is_admin %}
+      {% if is_closed %}
+        <form class="js-portal-action d-inline ml-8" method="post" action="{{ url_for('portal.reopen_bizincome', slug=slug, year=year, month=month) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn ghost">마감 해제</button>
+        </form>
+      {% else %}
+        <form class="js-portal-action d-inline ml-8" method="post" action="{{ url_for('portal.close_bizincome', slug=slug, year=year, month=month) }}">
+          <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
+          <button type="submit" class="btn danger">마감</button>
+        </form>
+      {% endif %}
     {% endif %}
   </div>
+  
 </div>
 
 <div class="card p-16">
+  <datalist id="nameSuggestions">
+    {% for s in name_suggestions %}
+      <option value="{{ s.name }}">{{ s.name }}</option>
+    {% endfor %}
+  </datalist>
   <div style="overflow:auto;">
     <table id="bizincomeTable" class="table w-100 biz-table">
       <thead>
         <tr>
           <th class="w-160">성명</th>
           <th class="w-200">주민/외국인번호</th>
-          <th class="w-140 text-right">지급총액</th>
+          <th class="w-140 text-right">세전금액</th>
+          <th class="w-120">내·외국인</th>
+          <th class="w-140">사업자구분</th>
           <th class="w-100 text-right">세율(%)</th>
+          <th class="w-140 text-right">세후금액</th>
           <th class="w-120 text-right">소득세</th>
           <th class="w-120 text-right">지방소득세</th>
           <th class="w-120 text-right">세액계</th>
@@ -37,6 +62,9 @@
           <td colspan="2" class="text-right"><strong>합계</strong></td>
           <td class="text-right"><span id="sumAmount">0</span></td>
           <td></td>
+          <td></td>
+          <td class="text-right"></td>
+          <td class="text-right"></td>
           <td class="text-right"><span id="sumTax">0</span></td>
           <td class="text-right"><span id="sumLocal">0</span></td>
           <td class="text-right"><span id="sumTotal">0</span></td>
@@ -59,6 +87,12 @@
   const initialRows = {{ rows|tojson }};
   const isClosed = {{ 'true' if is_closed else 'false' }};
   const rowsBody = document.getElementById('rowsBody');
+  const SUGGESTIONS = {{ name_suggestions|tojson }};
+  const SUGG_MAP = (()=>{
+    const m = Object.create(null);
+    try{ (SUGGESTIONS||[]).forEach(s=>{ if(s && s.name && !m[s.name]) m[s.name]=s; }); }catch(_){ }
+    return m;
+  })();
 
   function fmt(n){ if(!Number.isFinite(n)) return '0'; return n.toLocaleString('ko-KR'); }
   function parseNum(v){ const n = Number(String(v||'').replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
@@ -67,9 +101,11 @@
 
   function calcRow(row){
     const amount = parseNum(row.amount);
-    const rate = parseNum(row.rate || 3);
-    const tax = Math.round(amount * rate / 100);
-    const local = Math.round(tax * 0.1);
+    const rate = parseNum(row.rate || 3); // 세율 고정(편집 불가)
+    // 10원 단위 절사 적용(소득세, 지방소득세)
+    const floor10 = (v)=> Math.floor((v||0) / 10) * 10;
+    const tax = floor10(amount * rate / 100);
+    const local = floor10(tax * 0.1);
     const total = tax + local;
     const net = amount - total;
     return Object.assign(row, { amount, rate, tax, local, total, net });
@@ -82,44 +118,144 @@
       const row = tr._row || {};
       calcRow(row);
       tr.querySelector('[data-field="amount"]').value = row.amount ? fmt(row.amount) : '';
-      tr.querySelector('[data-field="rate"]').value = row.rate || 3;
+      tr.querySelector('[data-field="rate"]').textContent = (row.rate || 3);
+      const netInp = tr.querySelector('[data-field="net_input"]');
+      if(netInp){ netInp.value = row.net ? fmt(row.net) : ''; }
       tr.querySelector('[data-field="tax"]').textContent = fmt(row.tax);
       tr.querySelector('[data-field="local"]').textContent = fmt(row.local);
       tr.querySelector('[data-field="total"]').textContent = fmt(row.total);
       tr.querySelector('[data-field="net"]').textContent = fmt(row.net);
       sAmt += row.amount||0; sTax += row.tax||0; sLocal += row.local||0; sTotal += row.total||0; sNet += row.net||0;
     });
-    document.getElementById('sumAmount').textContent = fmt(sAmt);
+    const sumAmtEl = document.getElementById('sumAmount'); if(sumAmtEl) sumAmtEl.textContent = fmt(sAmt);
     document.getElementById('sumTax').textContent = fmt(sTax);
     document.getElementById('sumLocal').textContent = fmt(sLocal);
     document.getElementById('sumTotal').textContent = fmt(sTotal);
     document.getElementById('sumNet').textContent = fmt(sNet);
   }
 
+  // 주민등록번호 유틸 (근로소득과 동일 로직)
+  function ssnDigits(value){ return String(value||'').replace(/[^0-9]/g,'').slice(0,13); }
+  function formatSsn(value){ const d = ssnDigits(value); if(d.length <= 6) return d; return d.slice(0,6) + '-' + d.slice(6); }
+  function daysInMonthSimple(y,m){ try{ return new Date(y,m,0).getDate(); }catch(e){ return 31; } }
+  function validateSsn(value){
+    const d = ssnDigits(value); if(d.length !== 13) return false;
+    const yy = parseInt(d.slice(0,2),10); const mm = parseInt(d.slice(2,4),10); const dd = parseInt(d.slice(4,6),10);
+    if(!(mm>=1 && mm<=12)) return false; const baseYear = 2000 + (isFinite(yy)? yy : 0);
+    if(!(dd>=1 && dd<=daysInMonthSimple(baseYear, mm))) return false;
+    const w=[2,3,4,5,6,7,8,9,2,3,4,5]; let sum=0; for(let i=0;i<12;i++) sum += parseInt(d[i],10)*w[i];
+    const mod = 11 - (sum % 11); const check = mod % 10; return check === parseInt(d[12],10);
+  }
+  function setSsnValidity(input){
+    // 빈값 허용 또는 13자리 유효성 통과 시 OK
+    const d = ssnDigits(input.value);
+    const valid = d.length===0 || (d.length===13 && validateSsn(input.value));
+    if(!valid){ input.classList.add('invalid-ssn'); input.title='주민등록번호 검증 실패'; }
+    else { input.classList.remove('invalid-ssn'); input.removeAttribute('title'); }
+  }
+  function attachSsnHandlers(input){
+    if(input.dataset.ssnBound==='1') return; input.dataset.ssnBound='1';
+    try{ input.value = formatSsn(input.value); setSsnValidity(input); }catch(e){}
+    input.addEventListener('input', ()=>{ try{ const f=formatSsn(input.value); if(input.value!==f) input.value=f; setSsnValidity(input);}catch(e){} });
+    input.addEventListener('blur', ()=>{ try{ input.value=formatSsn(input.value); setSsnValidity(input);}catch(e){} });
+    input.addEventListener('keydown', (e)=>{ if(e.key==='Enter'){ try{ input.value=formatSsn(input.value); setSsnValidity(input);}catch(e){} } });
+    input.addEventListener('paste', ()=>{ setTimeout(()=>{ try{ input.value=formatSsn(input.value); setSsnValidity(input);}catch(e){} },0); });
+  }
+
   function bindRow(tr, row){
     tr._row = row;
-    tr.querySelector('[data-field="name"]').addEventListener('input', e=>{ row.name = e.target.value; });
-    tr.querySelector('[data-field="pid"]').addEventListener('input', e=>{ row.pid = e.target.value; });
+    const nameEl = tr.querySelector('[data-field="name"]');
+    const pidEl = tr.querySelector('[data-field="pid"]');
     const amtEl = tr.querySelector('[data-field="amount"]');
-    const rateEl = tr.querySelector('[data-field="rate"]');
-    amtEl.addEventListener('focus', ()=> sanitizeNumericInput(amtEl));
-    amtEl.addEventListener('blur', ()=>{ row.amount = parseNum(amtEl.value); formatNumericInput(amtEl); recalcAll(); });
-    amtEl.addEventListener('input', ()=>{ row.amount = parseNum(amtEl.value); });
-    rateEl.addEventListener('focus', ()=> sanitizeNumericInput(rateEl));
-    rateEl.addEventListener('blur', ()=>{ row.rate = parseNum(rateEl.value)||3; formatNumericInput(rateEl); recalcAll(); });
-    rateEl.addEventListener('input', ()=>{ row.rate = parseNum(rateEl.value)||3; });
-    tr.querySelector('[data-action="remove"]').addEventListener('click', ()=>{
-      tr.remove(); recalcAll();
-    });
+    const resSel = tr.querySelector('[data-field="resident_type"]');
+    const bizSel = tr.querySelector('[data-field="biz_type"]');
+    const netEl = tr.querySelector('[data-field="net_input"]');
+
+    if(!isClosed){
+      nameEl.addEventListener('input', e=>{ row.name = e.target.value; });
+      nameEl.addEventListener('change', ()=>{
+        const key = String(nameEl.value||'').trim();
+        const s = SUGG_MAP[key];
+        if(s){
+          if(!row.pid){ pidEl.value = s.pid || ''; row.pid = pidEl.value; try{ setSsnValidity(pidEl); }catch(_){ } }
+          if(!row.resident_type){ const v = s.resident_type || '내국인'; resSel.value = v; row.resident_type = v; }
+          if(!row.biz_type){ const v = s.biz_type || '기타자영업'; bizSel.value = v; row.biz_type = v; }
+        }
+      });
+      attachSsnHandlers(pidEl);
+      pidEl.placeholder = '000000-0000000';
+      pidEl.addEventListener('input', e=>{ row.pid = e.target.value; });
+      amtEl.addEventListener('focus', ()=> sanitizeNumericInput(amtEl));
+      amtEl.addEventListener('blur', ()=>{ row.amount = parseNum(amtEl.value); formatNumericInput(amtEl); recalcAll(); });
+      amtEl.addEventListener('input', ()=>{ row.amount = parseNum(amtEl.value); });
+      // When user edits after-tax, back-calc pre-tax
+      if(netEl){
+        netEl.addEventListener('focus', ()=> sanitizeNumericInput(netEl));
+        netEl.addEventListener('input', ()=>{ row.net = parseNum(netEl.value); });
+        netEl.addEventListener('blur', ()=>{
+          const r = parseNum(row.rate||3);
+          const targetNet = parseNum(netEl.value);
+          const g = (r/100)*1.1;
+          let amount = targetNet>0 && g<1 ? Math.round(targetNet/(1-g)) : 0;
+          function taxes(a){
+            const floor10 = (v)=> Math.floor((v||0) / 10) * 10;
+            const t = floor10(a*r/100);
+            const l = floor10(t*0.1);
+            const tot = t + l;
+            const n = a - tot;
+            return {t,l,tot,n};
+          }
+          // refine a few iterations for rounding stability
+          for(let i=0;i<6;i++){
+            const cur = taxes(amount);
+            const diff = targetNet - cur.n;
+            if(Math.abs(diff) <= 1) break;
+            amount = Math.max(0, Math.round(amount + diff/(1-g)));
+          }
+          // pick closest around
+          let bestA = amount, bestErr = Number.POSITIVE_INFINITY;
+          for(let k=-3;k<=3;k++){
+            const cand = Math.max(0, amount + k);
+            const cur = taxes(cand);
+            const err = Math.abs(targetNet - cur.n);
+            if(err < bestErr){ bestErr = err; bestA = cand; if(err===0) break; }
+          }
+          row.amount = bestA;
+          // normalize inputs
+          amtEl.value = row.amount ? fmt(row.amount) : '';
+          formatNumericInput(netEl);
+          recalcAll();
+        });
+      }
+      resSel.addEventListener('change', e=>{ row.resident_type = e.target.value; });
+      bizSel.addEventListener('change', e=>{ row.biz_type = e.target.value; });
+      tr.querySelector('[data-action="remove"]').addEventListener('click', ()=>{ tr.remove(); recalcAll(); });
+    } else {
+      nameEl.disabled = true; pidEl.disabled = true; amtEl.disabled = true; resSel.disabled = true; bizSel.disabled = true;
+      const netEl = tr.querySelector('[data-field="net_input"]'); if(netEl) netEl.disabled = true;
+      const rm = tr.querySelector('[data-action="remove"]'); if(rm) rm.disabled = true;
+    }
   }
 
   function addRow(row){
     const tr = document.createElement('tr');
     tr.innerHTML = `
-      <td><input type="text" data-field="name" placeholder="성명" class="w-160 biz-inp"></td>
+      <td><input type="text" data-field="name" placeholder="성명" class="w-160 biz-inp" list="nameSuggestions"></td>
       <td><input type="text" data-field="pid" placeholder="생년월일/외국인번호" class="w-200 biz-inp"></td>
       <td class="text-right"><input type="text" data-field="amount" class="w-140 text-right biz-inp num" inputmode="numeric" placeholder="0"></td>
-      <td class="text-right"><input type="text" data-field="rate" class="w-100 text-right biz-inp num" value="3" inputmode="numeric" placeholder="3"></td>
+      <td>
+        <select data-field="resident_type" class="w-120 biz-inp">
+          <option value="내국인">내국인</option>
+          <option value="외국인">외국인</option>
+        </select>
+      </td>
+      <td>
+        <select data-field="biz_type" class="w-140 biz-inp">
+          <option value="기타자영업" selected>기타자영업</option>
+        </select>
+      </td>
+      <td class="text-right"><span data-field="rate">3</span></td>
+      <td class="text-right"><input type="text" data-field="net_input" class="w-140 text-right biz-inp num" inputmode="numeric" placeholder="0"></td>
       <td class="text-right"><span data-field="tax">0</span></td>
       <td class="text-right"><span data-field="local">0</span></td>
       <td class="text-right"><span data-field="total">0</span></td>
@@ -127,7 +263,7 @@
       <td><button type="button" class="btn danger sm" data-action="remove">삭제</button></td>
     `;
     rowsBody.appendChild(tr);
-    const r = Object.assign({name:'', pid:'', amount:0, rate:3}, row||{});
+    const r = Object.assign({name:'', pid:'', amount:0, rate:3, resident_type: '내국인', biz_type: '기타자영업'}, row||{});
     bindRow(tr, r); calcRow(r); recalcAll();
   }
 
@@ -157,15 +293,58 @@
       body: JSON.stringify({ rows }),
       credentials: 'same-origin'
     });
-    if(!res.ok){ alert('저장 실패'); return; }
+    if(!res.ok){
+      const msg = `저장 실패 (HTTP ${res.status})`;
+      if(window.PayrollFlash){ PayrollFlash('error', msg); } else { alert(msg); }
+      return;
+    }
     const data = await res.json().catch(()=>({ok:false}));
-    if(data && data.ok){ alert('저장되었습니다.'); } else { alert('저장 실패'); }
+    if(data && data.ok){
+      if(window.PayrollFlash){ PayrollFlash('success', '저장되었습니다.'); } else { alert('저장되었습니다.'); }
+    } else {
+      if(window.PayrollFlash){ PayrollFlash('error', '저장 실패'); } else { alert('저장 실패'); }
+    }
   }
 
   document.getElementById('addRowBtn')?.addEventListener('click', ()=> addRow());
   document.getElementById('saveBtn')?.addEventListener('click', save);
 
   load();
+
+  // Intercept admin close/reopen forms (avoid navigating to JSON page)
+  document.addEventListener('submit', async (event)=>{
+    const form = event.target && event.target.closest ? event.target.closest('form.js-portal-action') : null;
+    if(!form) return;
+    event.preventDefault();
+    const submitBtn = form.querySelector('button[type="submit"]');
+    const originalText = submitBtn ? submitBtn.textContent : '';
+    if(submitBtn){ submitBtn.disabled = true; submitBtn.textContent = '처리 중...'; }
+    try{
+      const fd = new FormData(form);
+      const usp = new URLSearchParams();
+      fd.forEach((v,k)=> usp.append(k, typeof v === 'string' ? v : String(v)));
+      const res = await fetch(form.action, {
+        method: form.method || 'post',
+        headers: { 'Content-Type': 'application/x-www-form-urlencoded;charset=UTF-8' },
+        credentials: 'same-origin',
+        body: usp.toString(),
+      });
+      let payload = null;
+      try{ payload = await res.json(); }catch(_){ }
+      if(!res.ok || !payload || payload.ok === false){
+        const msg = (payload && payload.error) ? payload.error : `처리 실패 (HTTP ${res.status})`;
+        if(window.PayrollFlash){ PayrollFlash('error', msg); } else { alert(msg); }
+        return;
+      }
+      if(window.PayrollFlash){ PayrollFlash('success', '상태가 업데이트되었습니다.'); }
+      setTimeout(()=> window.location.reload(), 400);
+    }catch(err){
+      const msg = err && err.message ? err.message : '요청 처리 중 오류가 발생했습니다.';
+      if(window.PayrollFlash){ PayrollFlash('error', msg); } else { alert(msg); }
+    }finally{
+      if(submitBtn){ submitBtn.disabled = false; submitBtn.textContent = originalText; }
+    }
+  });
 })();
 </script>
 

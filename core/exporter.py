@@ -18,6 +18,7 @@ __all__ = [
     "build_salesmap_workbook",
     "build_salesmap_workbook_stream",
     "DEFAULT_COLUMNS",
+    "build_bizincome_workbook_stream_spooled",
 ]
 
 
@@ -806,3 +807,87 @@ def _normalize_inline_blanks(blob: BytesIO) -> BytesIO:
                 zout.writestr(item, data)
     out_io.seek(0)
     return out_io
+
+
+def build_bizincome_workbook_stream_spooled(*, company_slug: str, year: int, month: int, rows: list[dict]):
+    """Build a simple workbook for MonthlyBizIncome entries.
+
+    Columns: 성명, 주민/외국인번호, 지급총액, 내/외국인, 사업자구분, 세율(%), 소득세, 지방소득세, 세액계, 차인지급액
+    """
+    wb = Workbook(write_only=True)
+    ws = wb.create_sheet(title="Sheet1")
+
+    headers = [
+        "성명",
+        "주민/외국인번호",
+        "지급총액",
+        "내/외국인",
+        "사업자구분",
+        "세율(%)",
+        "소득세",
+        "지방소득세",
+        "세액계",
+        "차인지급액",
+    ]
+    ws.append(headers)
+
+    def get_num(x):
+        try:
+            if x in (None, ""):
+                return 0
+            return int(float(str(x).replace(",", "").strip()))
+        except Exception:
+            return 0
+
+    def _mask_ssn(s: str) -> str:
+        try:
+            digits = ''.join([c for c in s if c.isdigit()])
+            if len(digits) >= 7:
+                return f"***-**-{digits[-4:]}"
+        except Exception:
+            pass
+        return s if s else ''
+
+    sum_tax = sum_local = sum_total = sum_net = 0
+
+    for r in rows or []:
+        name = r.get("name", "")
+        pid = r.get("pid", "")
+        amount = get_num(r.get("amount"))
+        resident = r.get("resident_type") or ""
+        biz = r.get("biz_type") or "기타자영업"
+        try:
+            rate = int(str(r.get("rate") or 3).split(".")[0])
+        except Exception:
+            rate = 3
+        # 10원 단위 절사
+        def _floor10(v: float) -> int:
+            try:
+                i = int(v)
+            except Exception:
+                i = 0
+            return (i // 10) * 10
+        tax = _floor10(amount * (rate / 100))
+        local = _floor10(tax * 0.1)
+        total = tax + local
+        net = amount - total
+        sum_tax += tax; sum_local += local; sum_total += total; sum_net += net
+        ws.append([name, _mask_ssn(str(pid or "")), amount, resident, biz, rate, tax, local, total, net])
+
+    if rows:
+        ws.append([])
+        ws.append(["합계", "", "", "", "", "", sum_tax, sum_local, sum_total, sum_net])
+
+    try:
+        ws2 = wb.create_sheet(title="메타")
+        now = dt.datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        ws2.append(["Generated", now])
+        ws2.append(["Company", company_slug])
+        ws2.append(["Period", f"{year}-{month:02d}"])
+    except Exception:
+        pass
+
+    bio = BytesIO()
+    wb.save(bio)
+    bio.seek(0)
+    return bio

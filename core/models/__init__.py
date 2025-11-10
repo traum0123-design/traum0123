@@ -24,7 +24,9 @@ class Company(Base):
     token_key: Mapped[str] = mapped_column(String(128), default="")
     created_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now)
 
-    payrolls: Mapped[list[MonthlyPayroll]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    payrolls: Mapped[list["MonthlyPayroll"]] = relationship(back_populates="company", cascade="all, delete-orphan")
+    # Optional backref for business income records
+    bizincomes: Mapped[list["MonthlyBizIncome"]] = relationship(back_populates="company", cascade="all, delete-orphan")
 
 
 class MonthlyPayroll(Base):
@@ -42,6 +44,50 @@ class MonthlyPayroll(Base):
     __table_args__ = (
         UniqueConstraint("company_id", "year", "month", name="uq_company_month"),
         Index("ix_company_year_month", "company_id", "year", "month"),
+    )
+
+
+class MonthlyBizIncome(Base):
+    __tablename__ = "monthly_bizincome"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False, index=True)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    rows_json: Mapped[str] = mapped_column(Text, nullable=False, default="[]")
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+
+    company: Mapped[Company] = relationship(back_populates="bizincomes")
+
+    __table_args__ = (
+        UniqueConstraint("company_id", "year", "month", name="uq_bizincome_company_month"),
+        Index("ix_bizincome_company_year_month", "company_id", "year", "month"),
+    )
+
+class MonthlyBizIncomeRow(Base):
+    __tablename__ = "bizincome_rows"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    bizincome_id: Mapped[int] = mapped_column(ForeignKey("monthly_bizincome.id"), nullable=False, index=True)
+    company_id: Mapped[int] = mapped_column(Integer, nullable=False, index=True)
+    name: Mapped[str] = mapped_column(String(200), default="")
+    pid: Mapped[str] = mapped_column(String(128), default="")  # encrypted or masked
+    resident_type: Mapped[str] = mapped_column(String(20), default="")  # 내국인/외국인
+    biz_type: Mapped[str] = mapped_column(String(40), default="")      # 예: 기타자영업
+    amount: Mapped[int | None] = mapped_column(Integer)
+    rate: Mapped[int | None] = mapped_column(Integer)
+    tax: Mapped[int | None] = mapped_column(Integer)
+    local_tax: Mapped[int | None] = mapped_column(Integer)
+    total_tax: Mapped[int | None] = mapped_column(Integer)
+    net_amount: Mapped[int | None] = mapped_column(Integer)
+    year: Mapped[int] = mapped_column(Integer, nullable=False)
+    month: Mapped[int] = mapped_column(Integer, nullable=False)
+    is_closed: Mapped[bool] = mapped_column(Boolean, default=False)
+    updated_at: Mapped[dt.datetime] = mapped_column(DateTime(timezone=True), default=utc_now, onupdate=utc_now)
+
+    __table_args__ = (
+        Index("ix_bizincome_row_company_year_month", "company_id", "year", "month"),
     )
 
 

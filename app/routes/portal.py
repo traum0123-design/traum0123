@@ -19,7 +19,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.orm import Session
 
 from core.exporter import build_salesmap_workbook
-from core.models import Company, MonthlyPayroll
+from core.models import Company, MonthlyPayroll, MonthlyBizIncome
 from core.services import companies as company_service
 from core.services.auth import (
     authenticate_admin,
@@ -38,7 +38,7 @@ from core.services.payroll import (
     load_field_prefs,
     parse_rows,
 )
-from core.services.persistence import sync_normalized_rows
+from core.services.persistence import sync_normalized_rows, sync_bizincome_rows
 from payroll_api.database import get_db
 from payroll_portal.services.rate_limit import limiter, portal_login_key
 from payroll_portal.utils.assets import resolve_static, clear_manifest_cache
@@ -504,6 +504,45 @@ def edit_bizincome(request: Request, slug: str, year: int, month: int, db: Sessi
     if not rows:
         rows = [{}]
 
+    # Build name suggestions from previous month (for autocomplete)
+    try:
+        py = int(year)
+        pm = int(month) - 1
+        if pm <= 0:
+            py -= 1
+            pm = 12
+        prev = (
+            db.query(MonthlyBizIncome)
+            .filter(
+                MonthlyBizIncome.company_id == company.id,
+                MonthlyBizIncome.year == py,
+                MonthlyBizIncome.month == pm,
+            )
+            .first()
+        )
+        name_suggestions = []
+        if prev:
+            try:
+                prev_rows = json.loads(prev.rows_json or "[]")
+                seen: set[str] = set()
+                for r in prev_rows:
+                    nm = str(r.get("name") or "").strip()
+                    if not nm or nm in seen:
+                        continue
+                    seen.add(nm)
+                    name_suggestions.append({
+                        "name": nm,
+                        "pid": str(r.get("pid") or ""),
+                        "resident_type": str(r.get("resident_type") or ""),
+                        "biz_type": str(r.get("biz_type") or ""),
+                    })
+            except Exception:
+                name_suggestions = []
+        else:
+            name_suggestions = []
+    except Exception:
+        name_suggestions = []
+
     context = _base_context(request, company)
     context.update(
         {
@@ -515,6 +554,8 @@ def edit_bizincome(request: Request, slug: str, year: int, month: int, db: Sessi
             "is_closed": bool(record.is_closed) if record else False,
             "portal_home_url": str(request.url_for("portal.home", slug=slug)),
             "save_url": str(request.url_for("portal.save_bizincome", slug=slug, year=year, month=month)),
+            "is_admin": _is_admin(request),
+            "name_suggestions": name_suggestions,
         }
     )
     response = templates.TemplateResponse("bizincome_edit.html", context)
@@ -542,7 +583,6 @@ async def save_bizincome(request: Request, slug: str, year: int, month: int, db:
         except Exception:
             return JSONResponse({"ok": False, "error": "invalid json"}, status_code=400)
 
-    payload_json = json.dumps(rows, ensure_ascii=False)
     record = (
         db.query(MonthlyBizIncome)
         .filter(
@@ -552,6 +592,10 @@ async def save_bizincome(request: Request, slug: str, year: int, month: int, db:
         )
         .first()
     )
+    if record and bool(getattr(record, "is_closed", False)):
+        return JSONResponse({"ok": False, "error": "month is closed"}, status_code=400)
+
+    payload_json = json.dumps(rows, ensure_ascii=False)
     if record is None:
         record = MonthlyBizIncome(
             company_id=company.id,
@@ -564,5 +608,103 @@ async def save_bizincome(request: Request, slug: str, year: int, month: int, db:
         db.flush()
     else:
         record.rows_json = payload_json
+    try:
+        sync_bizincome_rows(db, record, rows)
+    except Exception:
+        # best-effort; do not block save on reporting table failure
+        pass
     db.commit()
     return {"ok": True}
+
+
+@router.post("/{slug}/bizincome/{year}/{month}/close", name="portal.close_bizincome")
+def close_bizincome(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
+    if not _is_admin(request):
+        return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
+    company = company_service.find_company_by_slug(db, slug) or _require_company(request, slug, db)
+    if not company:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    record = (
+        db.query(MonthlyBizIncome)
+        .filter(
+            MonthlyBizIncome.company_id == company.id,
+            MonthlyBizIncome.year == year,
+            MonthlyBizIncome.month == month,
+        )
+        .first()
+    )
+    if not record:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=400)
+    record.is_closed = True
+    try:
+        rows = json.loads(record.rows_json or "[]")
+    except Exception:
+        rows = []
+    try:
+        sync_bizincome_rows(db, record, rows)
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True}
+
+
+@router.post("/{slug}/bizincome/{year}/{month}/open", name="portal.reopen_bizincome")
+def reopen_bizincome(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
+    _verify_csrf(request, csrf_token)
+    if not _is_admin(request):
+        return JSONResponse({"ok": False, "error": "admin required"}, status_code=403)
+    company = company_service.find_company_by_slug(db, slug) or _require_company(request, slug, db)
+    if not company:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    record = (
+        db.query(MonthlyBizIncome)
+        .filter(
+            MonthlyBizIncome.company_id == company.id,
+            MonthlyBizIncome.year == year,
+            MonthlyBizIncome.month == month,
+        )
+        .first()
+    )
+    if not record:
+        return JSONResponse({"ok": False, "error": "not found"}, status_code=400)
+    record.is_closed = False
+    try:
+        rows = json.loads(record.rows_json or "[]")
+    except Exception:
+        rows = []
+    try:
+        sync_bizincome_rows(db, record, rows)
+    except Exception:
+        pass
+    db.commit()
+    return {"ok": True}
+
+
+@router.get("/{slug}/bizincome-export/{year}/{month}", name="portal.export_bizincome")
+def export_bizincome(slug: str, year: int, month: int, request: Request, db: Session = Depends(get_db)):
+    company = _require_company(request, slug, db)
+    if not company:
+        return RedirectResponse(url=f"/portal/{slug}/login", status_code=303)
+    record = (
+        db.query(MonthlyBizIncome)
+        .filter(
+            MonthlyBizIncome.company_id == company.id,
+            MonthlyBizIncome.year == year,
+            MonthlyBizIncome.month == month,
+        )
+        .first()
+    )
+    rows = []
+    if record:
+        try:
+            rows = json.loads(record.rows_json or "[]")
+        except Exception:
+            rows = []
+    from core.exporter import build_bizincome_workbook_stream_spooled as build_biz_wb
+    bio = build_biz_wb(company_slug=company.slug, year=year, month=month, rows=rows)
+    bio.seek(0)
+    from urllib.parse import quote
+    fname = f"bizincome_{company.slug}_{year}-{month:02d}.xlsx"
+    headers = {"Content-Disposition": f"attachment; filename*=UTF-8''{quote(fname)}"}
+    return StreamingResponse(bio, media_type="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", headers=headers)

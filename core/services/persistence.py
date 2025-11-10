@@ -5,7 +5,7 @@ from typing import Dict, List
 
 from sqlalchemy.orm import Session
 
-from core.models import MonthlyPayroll, MonthlyPayrollRow
+from core.models import MonthlyPayroll, MonthlyPayrollRow, MonthlyBizIncome, MonthlyBizIncomeRow
 from core.utils.pii import encrypt_ssn, mask_ssn
 from core.utils.dates import parse_date_flex
 
@@ -95,3 +95,59 @@ def _to_bool(value) -> bool | None:
 
 def _to_date(value) -> dt.date | None:
     return parse_date_flex(value)
+
+
+# ---------------- Business Income (사업소득) ----------------
+def sync_bizincome_rows(
+    session: Session,
+    record: MonthlyBizIncome,
+    rows: List[Dict],
+) -> None:
+    session.query(MonthlyBizIncomeRow).filter(MonthlyBizIncomeRow.bizincome_id == record.id).delete()
+    for row in rows or []:
+        session.add(_build_bizincome_row(record, row))
+
+
+def _build_bizincome_row(record: MonthlyBizIncome, row: Dict) -> MonthlyBizIncomeRow:
+    def _to_int0(v) -> int:
+        if v in (None, ""): return 0
+        try: return int(float(str(v).replace(",","")))
+        except Exception: return 0
+    name = str(row.get("name") or "").strip()
+    pid_raw = str(row.get("pid") or "").strip()
+    # Encrypt if possible, otherwise mask (same policy as payroll)
+    enc = encrypt_ssn(pid_raw)
+    pid_store = enc if enc.startswith("enc:") else mask_ssn(pid_raw)
+    amount = _to_int0(row.get("amount"))
+    try:
+        rate = int(str(row.get("rate") or 3).split(".")[0])
+    except Exception:
+        rate = 3
+    # 10원 단위 절사 적용
+    def _floor10(x: float) -> int:
+        try:
+            v = int(x)
+        except Exception:
+            v = 0
+        return (v // 10) * 10
+    tax = _floor10(amount * (rate / 100))
+    local = _floor10(tax * 0.1)
+    total = tax + local
+    net = amount - total
+    return MonthlyBizIncomeRow(
+        bizincome_id=record.id,
+        company_id=record.company_id,
+        name=name,
+        pid=pid_store,
+        resident_type=str(row.get("resident_type") or ""),
+        biz_type=str(row.get("biz_type") or ""),
+        amount=amount,
+        rate=rate,
+        tax=tax,
+        local_tax=local,
+        total_tax=total,
+        net_amount=net,
+        year=record.year,
+        month=record.month,
+        is_closed=bool(getattr(record, "is_closed", False)),
+    )

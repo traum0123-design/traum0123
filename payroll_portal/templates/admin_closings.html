@@ -12,6 +12,11 @@
       <option value="{{ c.id }}">{{ c.name }}</option>
       {% endfor %}
     </select>
+    <label for="dtype">유형</label>
+    <select id="dtype" name="typ">
+      <option value="payroll" selected>근로소득</option>
+      <option value="bizincome">사업소득</option>
+    </select>
     <label for="from">시작월</label>
     <input id="from" type="month" name="frm">
     <label for="to">종료월</label>

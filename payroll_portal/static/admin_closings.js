@@ -4,6 +4,7 @@
   function paramsFromFilters(){
     const p = new URLSearchParams();
     const c = qs('company').value.trim(); if(c) p.set('company_id', c);
+    const dt = (qs('dtype') && qs('dtype').value) || 'payroll'; p.set('typ', dt);
     const f = qs('from').value.trim(); if(f) p.set('frm', f);
     const t = qs('to').value.trim(); if(t) p.set('to', t);
     const status = (qs('status').value || 'all').toString();
@@ -25,7 +26,7 @@
       const status = (it.status||'').toString();
       const chipClass = status==='closed' ? 'status-closed' : (status==='in_progress' ? 'status-progress' : 'status-none');
       tr.innerHTML = `
-        <td><input type="checkbox" class="pick" data-company-id="${it.company_id}" data-month="${ym}"></td>
+        <td><input type="checkbox" class="pick" data-company-id="${it.company_id}" data-month="${ym}" data-type="${it.typ||'payroll'}"></td>
         <td>${it.company_name}</td>
         <td>${ym}</td>
         <td>${it.rows_count||0}</td>
@@ -88,7 +89,7 @@
     const seen = new Set();
     const qsParts = [];
     rows.forEach(r=>{
-      const key = `${r.dataset.companyId}:${r.dataset.month}`;
+      const key = `${r.dataset.companyId}:${r.dataset.month}:${r.dataset.type||'payroll'}`;
       if(seen.has(key)) return; seen.add(key);
       qsParts.push('sel=' + encodeURIComponent(key));
     });
