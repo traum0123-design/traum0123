@@ -243,12 +243,22 @@
 </form>
 
 <script nonce="{{ csp_nonce() }}">
-  // Debug/version banner to verify template is updated and script runs
+  // Debug/version banner + optional UI reset to verify template is updated and script runs
   (function(){
     try{
-      const __TPL_VER__ = 'payroll-tpl-debug-r12-base-sum-fix';
+      const __TPL_VER__ = 'payroll-tpl-v3-basic-right-3cols';
       window.__PAYROLL_TPL_VER__ = __TPL_VER__;
       console.log('[PAYROLL] Template loaded. Version=', __TPL_VER__);
+      // Allow full UI prefs reset via ?reset_ui=1 for cache/prefs mismatch cases
+      const url = new URL(window.location.href);
+      if(url.searchParams.get('reset_ui') === '1'){
+        try{
+          const keys = Object.keys(localStorage||{});
+          const targets = ['split_show_basic_info','payroll_group_map_v1','payroll_group_alias_v1'];
+          keys.forEach(k=>{ if(k.startsWith('payroll_colw_') || targets.includes(k)) localStorage.removeItem(k); });
+          console.log('[PAYROLL] UI prefs cleared');
+        }catch(_){/* ignore */}
+      }
     }catch(e){}
   })();
   // Enhance table: row numbering and dynamic add/remove
