@@ -1,0 +1,164 @@
+
+{% extends 'base.html' %}
+{% block content %}
+<div class="kicker">BUSINESS</div>
+<h1>{{ company_name }} · {{ year }}년 {{ '%02d'|format(month) }}월 사업소득 입력</h1>
+
+<div class="toolbar">
+  <div class="toolbar-group">
+    <a class="btn" href="{{ portal_home_url }}">월 변경</a>
+  </div>
+  <div class="toolbar-actions">
+    {% if not is_closed %}
+      <button type="button" class="btn primary" id="saveBtn">저장</button>
+    {% endif %}
+  </div>
+</div>
+
+<div class="card p-16">
+  <div style="overflow:auto;">
+    <table class="table w-100">
+      <thead>
+        <tr>
+          <th class="w-160">성명</th>
+          <th class="w-200">주민/외국인번호</th>
+          <th class="w-140 text-right">지급총액</th>
+          <th class="w-100 text-right">세율(%)</th>
+          <th class="w-120 text-right">소득세</th>
+          <th class="w-120 text-right">지방소득세</th>
+          <th class="w-120 text-right">세액계</th>
+          <th class="w-140 text-right">차인지급액</th>
+          <th class="w-80">작업</th>
+        </tr>
+      </thead>
+      <tbody id="rowsBody"></tbody>
+      <tfoot>
+        <tr>
+          <td colspan="2" class="text-right"><strong>합계</strong></td>
+          <td class="text-right"><span id="sumAmount">0</span></td>
+          <td></td>
+          <td class="text-right"><span id="sumTax">0</span></td>
+          <td class="text-right"><span id="sumLocal">0</span></td>
+          <td class="text-right"><span id="sumTotal">0</span></td>
+          <td class="text-right"><span id="sumNet">0</span></td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+  </div>
+  {% if not is_closed %}
+  <div class="mt-12">
+    <button type="button" class="btn" id="addRowBtn">행 추가</button>
+  </div>
+  {% endif %}
+</div>
+
+<script nonce="{{ csp_nonce() }}">
+(function(){
+  'use strict';
+  const initialRows = {{ rows|tojson }};
+  const isClosed = {{ 'true' if is_closed else 'false' }};
+  const rowsBody = document.getElementById('rowsBody');
+
+  function fmt(n){ if(!Number.isFinite(n)) return '0'; return n.toLocaleString('ko-KR'); }
+  function parseNum(v){ const n = Number(String(v||'').replace(/[^\d.-]/g,'')); return Number.isFinite(n) ? n : 0; }
+
+  function calcRow(row){
+    const amount = parseNum(row.amount);
+    const rate = parseNum(row.rate || 3);
+    const tax = Math.round(amount * rate / 100);
+    const local = Math.round(tax * 0.1);
+    const total = tax + local;
+    const net = amount - total;
+    return Object.assign(row, { amount, rate, tax, local, total, net });
+  }
+
+  function recalcAll(){
+    let sAmt=0, sTax=0, sLocal=0, sTotal=0, sNet=0;
+    const trs = rowsBody.querySelectorAll('tr');
+    trs.forEach(tr=>{
+      const row = tr._row || {};
+      calcRow(row);
+      tr.querySelector('[data-field="amount"]').value = row.amount || '';
+      tr.querySelector('[data-field="rate"]').value = row.rate || 3;
+      tr.querySelector('[data-field="tax"]').textContent = fmt(row.tax);
+      tr.querySelector('[data-field="local"]').textContent = fmt(row.local);
+      tr.querySelector('[data-field="total"]').textContent = fmt(row.total);
+      tr.querySelector('[data-field="net"]').textContent = fmt(row.net);
+      sAmt += row.amount||0; sTax += row.tax||0; sLocal += row.local||0; sTotal += row.total||0; sNet += row.net||0;
+    });
+    document.getElementById('sumAmount').textContent = fmt(sAmt);
+    document.getElementById('sumTax').textContent = fmt(sTax);
+    document.getElementById('sumLocal').textContent = fmt(sLocal);
+    document.getElementById('sumTotal').textContent = fmt(sTotal);
+    document.getElementById('sumNet').textContent = fmt(sNet);
+  }
+
+  function bindRow(tr, row){
+    tr._row = row;
+    tr.querySelector('[data-field="name"]').addEventListener('input', e=>{ row.name = e.target.value; });
+    tr.querySelector('[data-field="pid"]').addEventListener('input', e=>{ row.pid = e.target.value; });
+    tr.querySelector('[data-field="amount"]').addEventListener('input', e=>{ row.amount = parseNum(e.target.value); recalcAll(); });
+    tr.querySelector('[data-field="rate"]').addEventListener('input', e=>{ row.rate = parseNum(e.target.value)||3; recalcAll(); });
+    tr.querySelector('[data-action="remove"]').addEventListener('click', ()=>{
+      tr.remove(); recalcAll();
+    });
+  }
+
+  function addRow(row){
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td><input type="text" data-field="name" placeholder="성명" class="w-160"></td>
+      <td><input type="text" data-field="pid" placeholder="생년월일/외국인번호" class="w-200"></td>
+      <td class="text-right"><input type="text" data-field="amount" class="w-140 text-right" inputmode="numeric"></td>
+      <td class="text-right"><input type="text" data-field="rate" class="w-100 text-right" value="3" inputmode="numeric"></td>
+      <td class="text-right"><span data-field="tax">0</span></td>
+      <td class="text-right"><span data-field="local">0</span></td>
+      <td class="text-right"><span data-field="total">0</span></td>
+      <td class="text-right"><span data-field="net">0</span></td>
+      <td><button type="button" class="btn btn-sm" data-action="remove">삭제</button></td>
+    `;
+    rowsBody.appendChild(tr);
+    const r = Object.assign({name:'', pid:'', amount:0, rate:3}, row||{});
+    bindRow(tr, r); calcRow(r); recalcAll();
+  }
+
+  function load(){
+    if(!Array.isArray(initialRows) || initialRows.length===0){ addRow(); return; }
+    initialRows.forEach(r=> addRow(r));
+  }
+
+  function getRows(){
+    return Array.from(rowsBody.querySelectorAll('tr')).map(tr=> tr._row || {});
+  }
+
+  function csrf(){
+    const el = document.querySelector('meta[name="csrf-token"]');
+    return el ? el.getAttribute('content') : '';
+  }
+
+  async function save(){
+    const rows = getRows();
+    const res = await fetch('{{ save_url }}', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-CSRF-Token': csrf(),
+        'Accept': 'application/json',
+      },
+      body: JSON.stringify({ rows }),
+      credentials: 'same-origin'
+    });
+    if(!res.ok){ alert('저장 실패'); return; }
+    const data = await res.json().catch(()=>({ok:false}));
+    if(data && data.ok){ alert('저장되었습니다.'); } else { alert('저장 실패'); }
+  }
+
+  document.getElementById('addRowBtn')?.addEventListener('click', ()=> addRow());
+  document.getElementById('saveBtn')?.addEventListener('click', save);
+
+  load();
+})();
+</script>
+
+{% endblock %}

@@ -478,3 +478,91 @@ def export_payroll(slug: str, year: int, month: int, request: Request, db: Sessi
     resp.headers["Deprecation"] = "true"
     resp.headers["Link"] = f"</api/portal/{slug}/export/{year}/{month}>; rel=\"successor-version\""
     return resp
+
+
+@router.get("/{slug}/bizincome/{year}/{month}", response_class=HTMLResponse, name="portal.edit_bizincome")
+def edit_bizincome(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db)):
+    company = _require_company(request, slug, db)
+    if not company:
+        return RedirectResponse(url=f"/portal/{slug}/login", status_code=303)
+    # Load or initialize record
+    record = (
+        db.query(MonthlyBizIncome)
+        .filter(
+            MonthlyBizIncome.company_id == company.id,
+            MonthlyBizIncome.year == year,
+            MonthlyBizIncome.month == month,
+        )
+        .first()
+    )
+    rows = []
+    if record:
+        try:
+            rows = json.loads(record.rows_json or "[]")
+        except Exception:
+            rows = []
+    if not rows:
+        rows = [{}]
+
+    context = _base_context(request, company)
+    context.update(
+        {
+            "company_name": company.name,
+            "slug": slug,
+            "year": year,
+            "month": month,
+            "rows": rows,
+            "is_closed": bool(record.is_closed) if record else False,
+            "portal_home_url": str(request.url_for("portal.home", slug=slug)),
+            "save_url": str(request.url_for("portal.save_bizincome", slug=slug, year=year, month=month)),
+        }
+    )
+    response = templates.TemplateResponse("bizincome_edit.html", context)
+    return _apply_template_security(request, response)
+
+
+@router.post("/{slug}/bizincome/{year}/{month}", name="portal.save_bizincome")
+async def save_bizincome(request: Request, slug: str, year: int, month: int, db: Session = Depends(get_db)):
+    company = _require_company(request, slug, db)
+    if not company:
+        return JSONResponse({"ok": False, "error": "unauthorized"}, status_code=401)
+    content_type = (request.headers.get("content-type", "") or "").lower()
+    if "application/json" in content_type:
+        _verify_csrf(request)
+        payload = await request.json()
+        rows = payload.get("rows") or []
+        if not isinstance(rows, list):
+            return JSONResponse({"ok": False, "error": "invalid payload"}, status_code=400)
+    else:
+        form = await request.form()
+        _verify_csrf(request, form.get("csrf_token"))
+        rows_json = form.get("rows_json") or "[]"
+        try:
+            rows = json.loads(rows_json)
+        except Exception:
+            return JSONResponse({"ok": False, "error": "invalid json"}, status_code=400)
+
+    payload_json = json.dumps(rows, ensure_ascii=False)
+    record = (
+        db.query(MonthlyBizIncome)
+        .filter(
+            MonthlyBizIncome.company_id == company.id,
+            MonthlyBizIncome.year == year,
+            MonthlyBizIncome.month == month,
+        )
+        .first()
+    )
+    if record is None:
+        record = MonthlyBizIncome(
+            company_id=company.id,
+            year=year,
+            month=month,
+            rows_json=payload_json,
+            is_closed=False,
+        )
+        db.add(record)
+        db.flush()
+    else:
+        record.rows_json = payload_json
+    db.commit()
+    return {"ok": True}

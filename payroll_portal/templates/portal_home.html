@@ -15,7 +15,7 @@
     <div class="grid-months">
       {% for m in months %}
       <a class="month-btn {{ m.state }}{% if m.is_current %} current{% endif %}"
-         href="{{ url_for('portal.edit_payroll', slug=slug, year=year, month=m.month) }}">
+         href="{{ url_for('portal.edit_payroll', slug=slug, year=year, month=m.month) }}" data-year="{{ year }}" data-month="{{ m.month }}" data-edit-href="{{ url_for('portal.edit_payroll', slug=slug, year=year, month=m.month) }}" data-biz-href="{{ url_for('portal.edit_bizincome', slug=slug, year=year, month=m.month) }}">
         <div class="m">{{ '%02d'|format(m.month) }}월</div>
         <div class="s">
           {% if m.state == 'closed' %}
@@ -43,5 +43,53 @@
 
  
 
+
+<!-- 근로/사업소득 선택 모달 -->
+<div id="incomeSelectModal" class="modal" style="display:none;">
+  <div class="card card-narrow">
+    <h2>소득 유형 선택</h2>
+    <p class="muted">이 월에 입력할 소득 유형을 선택하세요.</p>
+    <div class="modal-actions" style="justify-content: center;">
+      <button type="button" class="primary" data-action="goWage">근로소득</button>
+      <button type="button" data-action="goBiz">사업소득</button>
+    </div>
+    <div class="mt-8" style="text-align:center;">
+      <button type="button" data-action="closeModal">취소</button>
+    </div>
+  </div>
+</div>
+
+<script nonce="{{ csp_nonce() }}">
+(function(){
+  'use strict';
+  const modal = document.getElementById('incomeSelectModal');
+  let targetHrefEdit = null;
+  let targetHrefBiz = null;
+
+  function openModal(editHref, bizHref){
+    targetHrefEdit = editHref; targetHrefBiz = bizHref;
+    modal.style.display = 'flex';
+  }
+  function closeModal(){ modal.style.display='none'; targetHrefEdit=null; targetHrefBiz=null; }
+
+  document.addEventListener('click', function(e){
+    const a = e.target.closest('a.month-btn');
+    if(a){
+      e.preventDefault();
+      openModal(a.getAttribute('data-edit-href'), a.getAttribute('data-biz-href'));
+      return;
+    }
+    if(e.target && e.target.matches('[data-action="goWage"]')){
+      if(targetHrefEdit){ window.location.href = targetHrefEdit; }
+    }
+    if(e.target && e.target.matches('[data-action="goBiz"]')){
+      if(targetHrefBiz){ window.location.href = targetHrefBiz; }
+    }
+    if(e.target && e.target.matches('[data-action="closeModal"]')){
+      closeModal();
+    }
+  });
+})();
+</script>
 <script nonce="{{ csp_nonce() }}" src="{{ url_for('static', filename='portal_home.js') }}"></script>
 {% endblock %}
