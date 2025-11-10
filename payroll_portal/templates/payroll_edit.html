@@ -100,6 +100,7 @@
       </div>
       <div class="panel-body">
         <div class="left-split">
+          <div id="empChips" class="chips-row" aria-label="사원 목록(가로)"></div>
           <div class="left-list">
             <table class="list">
           <colgroup id="empColgroup">
@@ -1370,6 +1371,36 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
       if(amt){ amt.textContent = (displayVal ? displayVal.toLocaleString('ko-KR') : '0') + '원'; }
     }catch(_){ }
   }
+
+  // --- Horizontal chips for employee quick selection ---
+  function buildEmpChips(){
+    const wrap = document.getElementById('empChips'); if(!wrap) return;
+    wrap.innerHTML = '';
+    const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
+    rows.forEach((base, i)=>{
+      const name = base.querySelector(`[name$='[사원명]']`)?.value || base.querySelector(`[name$='[사원코드]']`)?.value || '(이름없음)';
+      // 금액 표시: 관리자/마감 시 차인지급액, 고객/마감전은 지급합계
+      let amount = 0;
+      try{
+        const groups = classify();
+        const earnFs = (groups.earnings||[]).map(([f])=>f);
+        const dedFs = (groups.deductions||[]).map(([f])=>f);
+        const sumF = (arr)=> arr.reduce((acc, f)=>{
+          const el = base.querySelector(`[name$='[${f}]']`); if(!el) return acc; const raw = sanitizeNumeric(el.value||''); const v = raw===''?0:Number(raw); return acc + (isNaN(v)?0:v);
+        },0);
+        const earn = sumF(earnFs); const ded = sumF(dedFs);
+        amount = (IS_ADMIN || IS_CLOSED) ? (earn - ded) : earn;
+      }catch(_){ }
+      const chip = document.createElement('button');
+      chip.type = 'button'; chip.className = 'emp-chip'; chip.dataset.idx = String(i);
+      chip.innerHTML = `<span class="emp-name">${name}</span><span class="emp-amount">${(amount||0).toLocaleString('ko-KR')}원</span>`;
+      chip.addEventListener('click', ()=>{
+        const rowEl = document.querySelector(`#empList tr[data-idx='${i}']`) || document.querySelectorAll('#empList tr')[i];
+        selectEmp(i, rowEl);
+      });
+      wrap.appendChild(chip);
+    });
+  }
   function bindProxy(input, base, field, typ){
     if(!base){ input.disabled = true; input.readOnly = true; return; }
     const isNum = (typ==='number') && isNumericField(field);
@@ -1643,6 +1674,8 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     tbody.appendChild(fragment);
     const active = document.querySelector(`#empList tr[data-idx='${currentIdx}']`);
     if(active){ active.classList.add('active'); }
+    // Refresh horizontal chips row for quick access
+    try{ buildEmpChips(); }catch(_){ }
   }
 
 
