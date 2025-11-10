@@ -2380,6 +2380,22 @@ function gridInputChanged(el){
     });
     rows.forEach(tr=> body.appendChild(tr));
   }
+
+  // ------------------------------------------------------------------
+  // Safe defaults on page load: ensure any overlays are closed
+  // ------------------------------------------------------------------
+  try{
+    document.addEventListener('DOMContentLoaded', ()=>{
+      try{
+        ['rowDrawer','groupModal','calcConfigModal','exemptConfigModal','pasteModal','unsavedModal'].forEach((id)=>{
+          const el = document.getElementById(id);
+          if(!el) return;
+          // Prefer class-based hiding to avoid inline style changes under CSP
+          el.classList.add('hidden');
+        });
+      }catch(_){ }
+    });
+  }catch(_){ }
   function saveGroupConfig(){
     const map = {}; const alias = loadAliasMap();
     TABLE_META.cols.forEach(([field,label,typ])=>{
