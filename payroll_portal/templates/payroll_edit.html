@@ -1378,7 +1378,10 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     wrap.innerHTML = '';
     const rows = Array.from(document.querySelectorAll('#payroll-table tbody tr'));
     rows.forEach((base, i)=>{
-      const name = base.querySelector(`[name$='[사원명]']`)?.value || base.querySelector(`[name$='[사원코드]']`)?.value || '(이름없음)';
+      const rawName = base.querySelector(`[name$='[사원명]']`)?.value || base.querySelector(`[name$='[사원코드]']`)?.value || '';
+      const name = String(rawName||'').trim();
+      // 이름/코드가 비어있는 경우 칩을 만들지 않음
+      if(!name){ return; }
       // 금액 표시: 관리자/마감 시 차인지급액, 고객/마감전은 지급합계
       let amount = 0;
       try{
