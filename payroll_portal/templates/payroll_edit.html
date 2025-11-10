@@ -1335,7 +1335,8 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     const seenDed = new Set();
     cols.forEach(([field,label,typ])=>{
       if(typ!=='number') return; if(EXCLUDE.has(label)) return; const g = map[field] || defaultGroupFor(label);
-      const disp = alias[field] && String(alias[field]).trim() ? alias[field] : label;
+      let disp = alias[field] && String(alias[field]).trim() ? alias[field] : label;
+      if(field === '기준보수월액' && (!alias[field] || !String(alias[field]).trim())){ disp = '기준보수월액(국민연금)'; }
       // Deduplicate by field KEY (not display label) to avoid
       // losing distinct fields that share the same label/alias
       const key = String(field);
@@ -1540,7 +1541,12 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
       if(!baseInput) return;
       const wrap = document.createElement('div'); wrap.className='pair';
       const lab = document.createElement('label');
-      try{ const meta = TABLE_META.map && TABLE_META.map.get(field); lab.textContent = (meta && meta.label) ? meta.label : field; }catch(_){ lab.textContent = field; }
+      try{
+        const meta = TABLE_META.map && TABLE_META.map.get(field);
+        let baseLabel = (meta && meta.label) ? meta.label : field;
+        if(field === '기준보수월액'){ baseLabel = '기준보수월액(국민연금)'; }
+        lab.textContent = baseLabel;
+      }catch(_){ lab.textContent = (field === '기준보수월액' ? '기준보수월액(국민연금)' : field); }
       wrap.appendChild(lab);
       const inp = document.createElement('input'); inp.type = (typ==='date')? 'date' : (typ==='number' ? 'number':'text'); inp.value = baseInput.value || '';
       if(field==='주민등록번호'){
