@@ -120,11 +120,16 @@
           <tbody id="empList"></tbody>
         </table>
           </div>
-          <div class="left-basic card">
-            <h2>기본정보</h2>
-            <div id="basicInfo" class="basic-info"></div>
-          </div>
+          {# 기본정보 카드를 좌측에서 제거하고 우측 패널에서 렌더합니다. #}
         </div>
+      </div>
+    </div>
+
+    <!-- Basic info (moved to main panels) -->
+    <div class="panel" id="basicPanel">
+      <div class="panel-head"><strong>기본정보</strong></div>
+      <div class="panel-body">
+        <div id="basicInfo" class="basic-info"></div>
       </div>
     </div>
 
@@ -1408,9 +1413,15 @@ function formatNumeric(value){ try{ return (window.PayrollUtils && window.Payrol
     document.getElementById('selName').textContent = (base.querySelector(`[name$='[사원명]']`)?.value||'') || (base.querySelector(`[name$='[사원코드]']`)?.value||'');
     const bi = document.getElementById('basicInfo');
     if(bi){
-      const card = bi.closest('.left-basic') || bi;
-      if(getShowBasicInfo()){ card.style.display='block'; bi.style.display='grid'; buildBasicInfo(base); }
-      else { bi.style.display='none'; bi.innerHTML=''; if(card!==bi) card.style.display='none'; }
+      const panel = document.getElementById('basicPanel') || bi;
+      if(getShowBasicInfo()){
+        if(panel) panel.style.display='block';
+        bi.style.display='grid';
+        buildBasicInfo(base);
+      } else {
+        bi.style.display='none'; bi.innerHTML='';
+        if(panel && panel !== bi) panel.style.display='none';
+      }
     }
     const { earnings, deductions } = classify();
     const earnT = document.getElementById('earnTable'); const dedT = document.getElementById('dedTable');

@@ -3,10 +3,17 @@
 <div class="center">
   <div class="kicker">PORTAL</div>
   <h1>{{ company.name }} 포털 로그인</h1>
+  {% if error %}
+    <div class="flash error" role="alert">
+      {% if error == 'invalid_code' %}접속코드가 올바르지 않습니다.{% endif %}
+      {% if error == 'too_many_attempts' %}시도 횟수가 많아 잠시 후 다시 시도해 주세요.{% endif %}
+      {% if error not in ['invalid_code','too_many_attempts'] %}로그인에 실패했습니다. 다시 시도해 주세요.{% endif %}
+    </div>
+  {% endif %}
   <form method="post" action="{{ url_for('portal.login_post', slug=company.slug) }}" class="card form">
     <input type="hidden" name="csrf_token" value="{{ csrf_token() }}">
     <label>접속코드
-      <input type="password" name="access_code" placeholder="관리자가 전달한 접속코드" required>
+      <input type="password" name="access_code" placeholder="관리자가 전달한 접속코드" required autocomplete="one-time-code">
     </label>
     <button type="submit" class="primary">로그인</button>
     <p class="hint">접속코드를 분실하신 경우, 담당자에게 재발급을 요청하세요.</p>
