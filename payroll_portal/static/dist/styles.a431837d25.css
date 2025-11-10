@@ -95,19 +95,6 @@ h2{ font-size:18px; margin:8px 0 12px }
 .btn.primary:hover, button.primary:hover{ background:var(--primary-600); border-color:var(--primary-600) }
 button.danger, .danger{ background:var(--danger); color:#fff; border-color:var(--danger) }
 .btn.ghost{ background:transparent }
-/* Button variants */
-.btn.outline{ background:#fff; color:var(--primary); border-color:#bfdbfe }
-.btn.outline:hover{ background:#eff6ff; border-color:#93c5fd }
-.btn.secondary{ background:#eef2ff; color:#1e40af; border-color:#c7d2fe }
-.btn.secondary:hover{ background:#e0e7ff; border-color:#93c5fd }
-.btn[disabled], button[disabled]{ opacity:.6; cursor:not-allowed; transform:none }
-
-/* Button groups */
-.btn-group{ display:inline-flex; align-items:center; gap:8px }
-.btn-group.segmented{ gap:0 }
-.btn-group.segmented .btn{ border-radius:8px 0 0 8px; border-right-width:0 }
-.btn-group.segmented .btn + .btn{ border-radius:0; }
-.btn-group.segmented .btn:last-child{ border-radius:0 8px 8px 0; border-right-width:1px }
 
 /* Tables */
 .table{ width:100%; border-collapse:separate; border-spacing:0; font-size:14px }
@@ -253,21 +240,23 @@ body.density-dense .list-input{ height:34px; font-size:13px }
 /* small badge for net pay */
 .badge-net{ background:#ecfeff; border-color:#06b6d455; color:#0e7490; font-weight:700; }
 
-/* Earnings/Deductions: list (항목당 한 줄) */
-#earnTable.grid-fields, #dedTable.grid-fields{
+/* Earnings/Deductions: grid layout (labels + inputs side-by-side) */
+#earnTable, #dedTable{
   display:grid !important;
-  grid-template-columns: 1fr !important; /* 한 줄에 항목 1개 */
-  gap:8px; align-items:start;
+  grid-template-columns: 160px 1fr 160px 1fr 160px 1fr;
+  gap:8px 12px; align-items:center;
 }
-/* 한 줄: 왼쪽 라벨 | 오른쪽 입력 */
-#earnTable.grid-fields .gf-field, #dedTable.grid-fields .gf-field{
-  display:grid; grid-template-columns: 1fr 220px; column-gap:12px; align-items:center;
+/* Make each table row flow into grid cells */
+#earnTable tr, #dedTable tr{ display:contents; }
+/* Remove table borders/padding inside grid cells */
+#earnTable td, #dedTable td{ border:0 !important; padding:6px 8px; }
+#earnTable td:first-child, #dedTable td:first-child{ font-weight:700; color:var(--text); }
+#earnTable input, #dedTable input{ width:100%; height:38px; font-size:14px; }
+@media (max-width: 1280px){
+  #earnTable, #dedTable{ grid-template-columns: 160px 1fr 160px 1fr; }
 }
-#earnTable.grid-fields .gf-label, #dedTable.grid-fields .gf-label{ font-weight:600; color:var(--text); }
-#earnTable.grid-fields .gf-input input, #dedTable.grid-fields .gf-input input{ width:100%; height:38px; font-size:14px; text-align:right; }
 @media (max-width: 720px){
-  /* 모바일: 라벨 위, 입력 아래 */
-  #earnTable.grid-fields .gf-field, #dedTable.grid-fields .gf-field{ grid-template-columns: 1fr; row-gap:6px; }
+  #earnTable, #dedTable{ grid-template-columns: 140px 1fr; }
 }
 
 /* Compact controls */

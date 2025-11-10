@@ -92,8 +92,10 @@
         </select>
         <input type="search" id="splitSearch" class="maxw-160 ctrl-sm" placeholder="사원명 검색">
         {% if not is_closed %}
-        <button type="button" class="btn sm primary ml-8" data-action="prefillFromPrev">전월 복사</button>
-        <button type="button" class="btn sm" data-action="addRowGlobal">사원 추가</button>
+        <div class="btn-group">
+          <button type="button" class="btn sm outline" data-action="prefillFromPrev">전월 복사</button>
+          <button type="button" class="btn sm secondary" data-action="addRowGlobal">사원 추가</button>
+        </div>
         {% endif %}
       </div>
       <div class="panel-body">
@@ -135,7 +137,7 @@
           </div>
           <!-- Earnings sub-panel -->
           <div class="panel sub-panel" id="panelEarnings">
-            <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openGroupModal">항목 구성</button><button type="button" class="btn" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button></div>
+          <div class="panel-head"><strong>급여항목</strong><div class="flex-1"></div><div class="btn-group segmented"><button type="button" class="btn outline" data-action="openGroupModal">항목 구성</button><button type="button" class="btn outline" data-action="openProrationModal" {% if is_closed %}disabled{% endif %}>일할계산</button></div></div>
           <div class="panel-body">
             <div id="earnTable" class="grid-fields"></div>
             <div class="summary">
@@ -145,7 +147,7 @@
         </div>
           <!-- Deductions sub-panel -->
           <div class="panel sub-panel" id="panelDeductions">
-            <div class="panel-head"><strong>공제항목</strong><div class="flex-1"></div><button type="button" class="btn" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div>
+          <div class="panel-head"><strong>공제항목</strong><div class="flex-1"></div><div class="btn-group segmented"><button type="button" class="btn outline" data-action="openCalcConfig" {% if not is_admin %}disabled{% endif %}>계산방법</button><button type="button" class="btn outline" data-action="openExemptConfig" {% if not is_admin %}disabled{% endif %}>비과세</button><button type="button" class="btn outline" data-action="openProrateConfig" {% if not is_admin %}disabled{% endif %}>일할계산관리</button></div></div>
           <div class="panel-body">
             <div id="dedTable" class="grid-fields"></div>
             <div class="summary">
