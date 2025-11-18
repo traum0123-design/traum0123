@@ -76,3 +76,65 @@
     attachFlash(el);
     return el;
   };
+
+  // Copy-to-clipboard helpers for admin/customer sharing
+  (function(){
+    function copyText(text){
+      if(!text) return;
+      text = String(text || '').trim();
+      if(!text) return;
+      function notify(ok){
+        if(!window.PayrollFlash) return;
+        if(ok){
+          PayrollFlash('success', '클립보드에 복사되었습니다.');
+        }else{
+          PayrollFlash('error', '복사에 실패했습니다. 직접 복사해주세요.');
+        }
+      }
+      try{
+        if(navigator.clipboard && navigator.clipboard.writeText){
+          navigator.clipboard.writeText(text).then(function(){ notify(true); }).catch(function(){
+            fallbackCopy(text, notify);
+          });
+          return;
+        }
+      }catch(_){}
+      fallbackCopy(text, notify);
+    }
+    function fallbackCopy(text, notify){
+      try{
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', 'readonly');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        notify(true);
+      }catch(_){
+        notify(false);
+      }
+    }
+    document.addEventListener('click', function(e){
+      const t = e.target;
+      if(!(t instanceof HTMLElement)) return;
+      if(!t.matches('[data-copy-target], [data-copy-text]')) return;
+      let text = '';
+      const selector = t.getAttribute('data-copy-target');
+      if(selector){
+        try{
+          const el = document.querySelector(selector);
+          if(el){
+            text = (el.value != null && el.value !== undefined) ? el.value : (el.textContent || '');
+          }
+        }catch(_){}
+      }
+      if(!text){
+        const explicit = t.getAttribute('data-copy-text');
+        if(explicit) text = explicit;
+      }
+      copyText(text);
+    });
+  })();

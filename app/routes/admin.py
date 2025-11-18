@@ -149,111 +149,84 @@ def admin_index(request: Request, db: Session = Depends(get_db)):
 
 
 @router.post("/company/new", name="admin.company_new")
-def company_new(request: Request, name: str = Form(...), slug: str = Form(...), db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
-    _verify_csrf(request, csrf_token)
+def company_new(request: Request, name: str = Form(...), slug: str = Form(...), csrf_token: str | None = Form(None), db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    _verify_csrf(request, csrf_token)
     name = (name or "").strip()
     slug = (slug or "").strip().lower()
     if not name or not slug:
-        return RedirectResponse(url="/admin/?error=missing", status_code=303)
-    if db.query(Company).filter(Company.slug == slug).first():
-        return RedirectResponse(url="/admin/?error=exists", status_code=303)
+        raise HTTPException(status_code=400, detail="missing name/slug")
+    existing = db.query(Company).filter(Company.slug == slug).first()
+    if existing:
+        return RedirectResponse(url=f"/admin/?error=slug_exists", status_code=303)
     company, code = company_service.create_company(db, name, slug)
-    response = RedirectResponse(url=f"/admin/company/{company.id}?code={code}", status_code=303)
-    return response
+    try:
+        record_event(db=db, actor='admin', action='company_created', resource=f'/admin/company/{company.id}', company_id=int(company.id), result='ok', meta={"slug": slug})
+    except Exception:
+        pass
+    return RedirectResponse(url=f"/admin/company/{company.id}?new_code={code}", status_code=303)
 
 
 @router.get("/company/{company_id}", response_class=HTMLResponse, name="admin.company_detail")
-def company_detail(
-    request: Request,
-    company_id: int,
-    db: Session = Depends(get_db),
-    code: str | None = None,
-    rotated: int | None = None,
-):
+def company_detail(request: Request, company_id: int, new_code: str | None = None, token_rotated: bool | None = None, db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
     company = db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     context = _base_context(request)
-    context.update({
-        "company": company,
-        "new_code": code,
-        "token_rotated": bool(rotated) if rotated is not None else False,
-        "portal_login_url": f"/portal/{company.slug}/login",
-    })
+    context.update({"company": company, "new_code": new_code, "token_rotated": token_rotated})
     response = templates.TemplateResponse("admin_company_detail.html", context)
     return _apply_template_security(request, response)
 
 
 @router.post("/company/{company_id}/reset-code", name="admin.company_reset_code")
-def company_reset_code(request: Request, company_id: int, db: Session = Depends(get_db), csrf_token: str | None = Form(None)):
-    _verify_csrf(request, csrf_token)
+def company_reset_code(request: Request, company_id: int, csrf_token: str | None = Form(None), db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    _verify_csrf(request, csrf_token)
     company = db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     code = company_service.rotate_company_access(db, company)
     try:
-        record_event(db=db, actor='admin', action='company_access_code_rotated', resource=f"/admin/company/{company_id}/reset-code", company_id=company.id, ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''))
+        record_event(db=db, actor='admin', action='company_access_code_rotated', resource=f'/admin/company/{company.id}', company_id=int(company.id), result='ok')
     except Exception:
         pass
-    return RedirectResponse(url=f"/admin/company/{company_id}?code={code}", status_code=303)
+    return RedirectResponse(url=f"/admin/company/{company.id}?new_code={code}", status_code=303)
 
 
 @router.post("/company/{company_id}/rotate-token-key", name="admin.company_rotate_token_key")
-def company_rotate_token_key(
-    request: Request,
-    company_id: int,
-    db: Session = Depends(get_db),
-    csrf_token: str | None = Form(None),
-):
-    _verify_csrf(request, csrf_token)
+def company_rotate_token_key(request: Request, company_id: int, csrf_token: str | None = Form(None), db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    _verify_csrf(request, csrf_token)
     company = db.get(Company, company_id)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
     company_service.rotate_company_token_key(db, company)
     try:
-        record_event(db=db, actor='admin', action='company_token_key_rotated', resource=f"/admin/company/{company_id}/rotate-token-key", company_id=company.id, ip=str(request.client.host if request.client else ''), ua=request.headers.get('user-agent',''))
+        record_event(db=db, actor='admin', action='company_token_key_rotated', resource=f'/admin/company/{company.id}', company_id=int(company.id), result='ok')
     except Exception:
         pass
-    return RedirectResponse(url=f"/admin/company/{company_id}?rotated=1", status_code=303)
+    return RedirectResponse(url=f"/admin/company/{company.id}?token_rotated=1", status_code=303)
 
 
 @router.post("/company/{company_id}/delete", name="admin.company_delete")
-def company_delete(
-    request: Request,
-    company_id: int,
-    db: Session = Depends(get_db),
-    csrf_token: str | None = Form(None),
-):
-    _verify_csrf(request, csrf_token)
+def company_delete(request: Request, company_id: int, csrf_token: str | None = Form(None), db: Session = Depends(get_db)):
     if not _is_admin(request):
         return RedirectResponse(url="/admin/login", status_code=303)
+    _verify_csrf(request, csrf_token)
     comp = db.get(Company, company_id)
     if not comp:
         raise HTTPException(status_code=404, detail="company not found")
-    # Best-effort audit before delete
     try:
-        record_event(
-            db=db,
-            actor='admin',
-            action='company_delete_requested',
-            resource=f"/admin/company/{company_id}/delete",
-            company_id=comp.id,
-            ip=str(request.client.host if request.client else ''),
-            ua=request.headers.get('user-agent',''),
-            result='ok',
-        )
+        record_event(db=db, actor='admin', action='company_delete_requested', resource=f'/admin/company/{comp.id}', company_id=int(comp.id), result='ok')
     except Exception:
         pass
-    # Delete dependent records first to satisfy FKs
     try:
+        # Cascade delete related entities (keep AuditEvent for history)
         db.query(MonthlyPayrollRow).filter(MonthlyPayrollRow.company_id == comp.id).delete(synchronize_session=False)
         db.query(MonthlyPayroll).filter(MonthlyPayroll.company_id == comp.id).delete(synchronize_session=False)
         db.query(ExtraField).filter(ExtraField.company_id == comp.id).delete(synchronize_session=False)
@@ -503,3 +476,4 @@ def policy_history_page(
     })
     response = templates.TemplateResponse("admin_policy_history.html", context)
     return _apply_template_security(request, response)
+
