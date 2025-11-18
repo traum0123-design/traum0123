@@ -27,6 +27,10 @@ class PayrollSettings(BaseSettings):
     build_ts: Optional[str] = Field(None, alias="BUILD_TS")
     # Public base URL for portal links (e.g., https://portal.example.com)
     portal_public_base_url: Optional[str] = Field(None, alias="PORTAL_PUBLIC_BASE_URL")
+    # Company token TTL (seconds). Default 30 days to reduce repeated logins.
+    company_token_ttl: int = Field(60 * 60 * 24 * 30, alias="COMPANY_TOKEN_TTL")
+    # Portal cookie max age (seconds). Defaults to company_token_ttl if not set.
+    portal_cookie_max_age: Optional[int] = Field(None, alias="PORTAL_COOKIE_MAX_AGE")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -95,6 +99,26 @@ class PayrollSettings(BaseSettings):
             return None
         val = str(value).strip()
         return val or None
+
+    @field_validator("company_token_ttl", mode="before")
+    @classmethod
+    def _parse_int_ttl(cls, value) -> int:
+        try:
+            n = int(value)
+            return max(600, n)  # at least 10 minutes
+        except Exception:
+            return 60 * 60 * 24 * 30
+
+    @field_validator("portal_cookie_max_age", mode="before")
+    @classmethod
+    def _parse_cookie_age(cls, value) -> Optional[int]:
+        if value in (None, ""):
+            return None
+        try:
+            n = int(value)
+            return max(600, n)
+        except Exception:
+            return None
 
 
 @lru_cache(maxsize=1)

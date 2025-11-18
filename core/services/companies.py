@@ -38,6 +38,8 @@ def create_company(session: Session, name: str, slug: str) -> tuple[Company, str
 def rotate_company_access(session: Session, company: Company) -> str:
     code = secrets.token_hex(4)
     company.access_hash = generate_password_hash(code)
+    # Also rotate the token_key so existing tokens are invalidated as a safety net
+    company.token_key = secrets.token_hex(16)
     session.commit()
     return code
 

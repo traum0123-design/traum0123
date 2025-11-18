@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from typing import Optional
+from hashlib import sha256
 
 from sqlalchemy.orm import Session
 
@@ -57,6 +58,15 @@ def authenticate_company(session: Session, slug: str | None, token: str) -> Comp
     payload_key = str(payload.get("key") or "").strip()
     if token_key and token_key != payload_key:
         return None
+    # If the token carries an access_hash fingerprint, require it to match the current access_hash
+    try:
+        claim_ah = str(payload.get("ah") or "").strip()
+    except Exception:
+        claim_ah = ""
+    if claim_ah:
+        cur_ah = sha256((company.access_hash or "").encode()).hexdigest()
+        if claim_ah != cur_ah:
+            return None
     return company
 
 
@@ -70,7 +80,9 @@ def issue_company_token(session: Session, company: Company, *, ttl_seconds: int 
     ttl = ttl_seconds if ttl_seconds is not None else int(getattr(get_settings(), "company_token_ttl", 7200) or 7200)
     key = (company.token_key or "").strip() if ensure_key else None
     eff_roles = roles if roles is not None else (["admin"] if is_admin else ["payroll_manager"])
-    return make_company_token(secret, company.id, company.slug, is_admin=is_admin, ttl_seconds=ttl, key=key, roles=eff_roles)
+    # Fingerprint of current access_hash so rotating access code invalidates tokens
+    ah_fp = sha256((company.access_hash or "").encode()).hexdigest()
+    return make_company_token(secret, company.id, company.slug, is_admin=is_admin, ttl_seconds=ttl, key=key, roles=eff_roles, access_hash_fingerprint=ah_fp)
 
 
 def authenticate_admin(token: str) -> bool:

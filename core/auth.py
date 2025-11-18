@@ -18,7 +18,17 @@ def _b64url_decode(data: str) -> bytes:
     return base64.urlsafe_b64decode(s.encode())
 
 
-def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: bool = False, ttl_seconds: int = 2 * 60 * 60, key: str | None = None, roles: list[str] | None = None) -> str:
+def make_company_token(
+    secret: str,
+    company_id: int,
+    slug: str,
+    *,
+    is_admin: bool = False,
+    ttl_seconds: int = 2 * 60 * 60,
+    key: str | None = None,
+    roles: list[str] | None = None,
+    access_hash_fingerprint: str | None = None,
+) -> str:
     now = int(time.time())
     payload = {
         "cid": int(company_id),
@@ -33,6 +43,9 @@ def make_company_token(secret: str, company_id: int, slug: str, *, is_admin: boo
         payload["roles"] = list(roles)
     if key:
         payload["key"] = str(key)
+    if access_hash_fingerprint:
+        # Include a fingerprint of the current access_hash so rotating the access code invalidates existing tokens
+        payload["ah"] = str(access_hash_fingerprint)
     body = json.dumps(payload, separators=(",", ":"), sort_keys=True).encode()
     sig = hmac.new(secret.encode(), body, sha256).digest()
     return f"{_b64url(body)}.{_b64url(sig)}"

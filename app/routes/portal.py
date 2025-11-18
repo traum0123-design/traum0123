@@ -249,6 +249,8 @@ def login_action(request: Request, slug: str, db: Session = Depends(get_db), acc
         rl.reset(key)
     except Exception:
         pass
+    from core.settings import get_settings as _gs
+    settings = _gs()
     token = issue_company_token(db, company)
     response = RedirectResponse(url=f"/portal/{slug}", status_code=303)
     response.set_cookie(
@@ -257,6 +259,7 @@ def login_action(request: Request, slug: str, db: Session = Depends(get_db), acc
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
+        max_age=int(settings.portal_cookie_max_age or settings.company_token_ttl or 0) or None,
     )
     return response
 
