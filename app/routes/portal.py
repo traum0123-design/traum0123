@@ -215,6 +215,10 @@ def _base_context(request: Request, company: Company | None = None) -> dict:
 
 @router.get("/{slug}/login", response_class=HTMLResponse, name="portal.login")
 def login_page(request: Request, slug: str, db: Session = Depends(get_db), error: str | None = None):
+    # If already authenticated for this company, go straight to home
+    already = _require_company(request, slug, db)
+    if already:
+        return RedirectResponse(url=f"/portal/{slug}", status_code=303)
     company = company_service.find_company_by_slug(db, slug)
     if not company:
         raise HTTPException(status_code=404, detail="company not found")
