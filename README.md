@@ -10,6 +10,7 @@
 - 실행
   - 로컬: `uvicorn app.main:app --reload`
   - Compose(dev): `make compose-up-dev` (리로드/마운트)
+  - 포털 공개 URL 고정(선택): `PORTAL_PUBLIC_BASE_URL=https://portal.example.com`
 
 - 점검
   - 헬스: `make health` (또는 `/healthz`)
@@ -184,6 +185,7 @@ docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
 환경 변수 팁
 - CORS: `API_CORS_ORIGINS`에 허용할 오리진을 콤마로 구분해 지정하세요.
 - 로깅: `UVICORN_LOG_LEVEL`로 앱 로그 레벨을 조정합니다(`debug`/`info`/...).
+- 포털 공개 URL: `PORTAL_PUBLIC_BASE_URL`을 설정하면 템플릿의 `url_for('portal.*')` 링크가 해당 베이스 도메인을 사용해 절대 URL로 생성됩니다.
 
 ### pre-commit 사용
 

@@ -183,6 +183,20 @@ def _base_context(request: Request, company: Company | None = None) -> dict:
                 pass
             mapped = resolve_static(static_path)
             return request.app.url_path_for("static", path=mapped)
+        # Allow overriding public base for portal links
+        try:
+            if target.startswith("portal."):
+                base = getattr(get_settings(), "portal_public_base_url", None)
+                if base:
+                    try:
+                        path = request.app.url_path_for(target, **params)
+                        base = str(base).rstrip("/")
+                        return base + str(path)
+                    except Exception:
+                        # Fall back to default behavior
+                        pass
+        except Exception:
+            pass
         return request.url_for(target, **params)
 
     return {

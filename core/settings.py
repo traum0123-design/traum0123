@@ -25,6 +25,8 @@ class PayrollSettings(BaseSettings):
     app_version: str = Field("dev", alias="APP_VERSION")
     git_sha: Optional[str] = Field(None, alias="GIT_SHA")
     build_ts: Optional[str] = Field(None, alias="BUILD_TS")
+    # Public base URL for portal links (e.g., https://portal.example.com)
+    portal_public_base_url: Optional[str] = Field(None, alias="PORTAL_PUBLIC_BASE_URL")
 
     model_config = SettingsConfigDict(
         env_file=".env",
@@ -85,6 +87,14 @@ class PayrollSettings(BaseSettings):
         if value is None or value == "":
             return False
         return str(value).strip().lower() in {"1", "true", "yes", "on"}
+
+    @field_validator("portal_public_base_url", mode="before")
+    @classmethod
+    def _normalize_portal_base(cls, value: str | None) -> Optional[str]:
+        if value is None:
+            return None
+        val = str(value).strip()
+        return val or None
 
 
 @lru_cache(maxsize=1)

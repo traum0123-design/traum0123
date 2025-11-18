@@ -78,6 +78,17 @@
       try{ if(window.PayrollFlash) { PayrollFlash(type, msg); return; } }catch(_){ }
       if(type==='success') alert(msg); // 최소 보장
     }
+    function copyText(text){
+      if(!text) return false;
+      text = String(text||'').trim();
+      if(!text) return false;
+      if(navigator.clipboard && navigator.clipboard.writeText){
+        navigator.clipboard.writeText(text).then(function(){ flash('success','클립보드에 복사되었습니다.'); }).catch(function(){ fallback(text); });
+      }else{
+        fallback(text);
+      }
+      return true;
+    }
     function copyFromSelector(sel){
       try{
         var el = document.querySelector(sel);
@@ -101,7 +112,16 @@
         flash('success','클립보드에 복사되었습니다.');
       }catch(_){ flash('error','복사에 실패했습니다. 직접 복사해주세요.'); }
     }
-    function on(id, sel){ var b=document.getElementById(id); if(!b) return; b.addEventListener('click', function(e){ e.preventDefault(); copyFromSelector(sel); }); }
+    function on(id, sel){
+      var b=document.getElementById(id);
+      if(!b) return;
+      b.addEventListener('click', function(e){
+        e.preventDefault();
+        var explicit = b.getAttribute('data-copy-text');
+        if(explicit && explicit.trim()){ copyText(explicit); return; }
+        copyFromSelector(sel);
+      });
+    }
     on('btnCopyPortalUrl', '#portalLoginUrl');
     on('btnCopyAccessCode', '#companyAccessCode');
   })();
