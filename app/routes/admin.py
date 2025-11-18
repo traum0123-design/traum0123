@@ -267,6 +267,7 @@ def company_impersonate(request: Request, company_id: int, db: Session = Depends
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
+        path="/",
         max_age=_max_age,
     )
     admin_token = request.cookies.get(ADMIN_COOKIE_NAME)

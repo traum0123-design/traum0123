@@ -263,6 +263,8 @@ def login_action(request: Request, slug: str, db: Session = Depends(get_db), acc
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
+        # Path=/ so 토큰이 /portal/{slug} 와 그 하위 모든 경로에서 재사용됨
+        path="/",
         max_age=int(settings.portal_cookie_max_age or settings.company_token_ttl or 0) or None,
     )
     return response
