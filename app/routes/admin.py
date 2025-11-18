@@ -255,12 +255,19 @@ def company_impersonate(request: Request, company_id: int, db: Session = Depends
     if year and month:
         target = f"/portal/{company.slug}/payroll/{year}/{month}"
     response = RedirectResponse(url=target, status_code=303)
+    # Align cookie persistence with portal login settings (e.g., 90 days)
+    try:
+        from core.settings import get_settings as _gs
+        _max_age = int((_gs().portal_cookie_max_age or _gs().company_token_ttl or 0) or 0) or None
+    except Exception:
+        _max_age = None
     response.set_cookie(
         PORTAL_COOKIE_NAME,
         token,
         httponly=True,
         samesite="lax",
         secure=COOKIE_SECURE,
+        max_age=_max_age,
     )
     admin_token = request.cookies.get(ADMIN_COOKIE_NAME)
     if admin_token:
@@ -476,4 +483,3 @@ def policy_history_page(
     })
     response = templates.TemplateResponse("admin_policy_history.html", context)
     return _apply_template_security(request, response)
-
