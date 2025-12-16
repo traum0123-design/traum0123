@@ -17,6 +17,12 @@ set -euo pipefail
 #   API_CORS_ORIGINS (comma-separated)
 #   COOKIE_SECURE (1 recommended in prod)
 #   CLOUDSQL_INSTANCE (PROJECT:REGION:INSTANCE to attach Cloud SQL)
+#   AR_REPO (Artifact Registry repository name; default: SERVICE_NAME)
+#   AR_LOCATION (Artifact Registry location; default: REGION)
+#   IMAGE_TAG (override image tag; default: timestamp)
+#   CLOUD_RUN_PORT (container port; default: 8000, or "default" to unset and use Cloud Run default)
+#   CLOUD_RUN_SECRETS (comma-separated KEY=SECRET:VERSION mappings for Secret Manager)
+#   CREATE_AR_REPO=1 (create Artifact Registry repo if missing)
 
 PROJECT_ID=${1:-${PROJECT_ID:-}}
 REGION=${2:-${REGION:-asia-northeast3}}
@@ -32,25 +38,58 @@ echo "Region : ${REGION}"
 echo "Service: ${SERVICE_NAME}"
 
 TS=$(date +%Y%m%d-%H%M%S)
-IMAGE="gcr.io/${PROJECT_ID}/${SERVICE_NAME}:${TS}"
+TAG=${IMAGE_TAG:-${TS}}
+AR_LOCATION=${AR_LOCATION:-${REGION}}
+AR_REPO=${AR_REPO:-${SERVICE_NAME}}
+IMAGE="${AR_LOCATION}-docker.pkg.dev/${PROJECT_ID}/${AR_REPO}/${SERVICE_NAME}:${TAG}"
+
+if ! gcloud artifacts repositories describe "${AR_REPO}" --project "${PROJECT_ID}" --location "${AR_LOCATION}" >/dev/null 2>&1; then
+  if [[ "${CREATE_AR_REPO:-0}" == "1" ]]; then
+    echo "\nCreating Artifact Registry repo: ${AR_REPO} (${AR_LOCATION})"
+    gcloud artifacts repositories create "${AR_REPO}" \
+      --project "${PROJECT_ID}" \
+      --location "${AR_LOCATION}" \
+      --repository-format docker
+  else
+    echo "ERROR: Artifact Registry repo not found: ${AR_REPO} (location: ${AR_LOCATION})" >&2
+    echo "Create it with:" >&2
+    echo "  gcloud artifacts repositories create \"${AR_REPO}\" --repository-format=docker --location \"${AR_LOCATION}\" --project \"${PROJECT_ID}\"" >&2
+    echo "Or rerun with CREATE_AR_REPO=1 to auto-create." >&2
+    exit 1
+  fi
+fi
 
 echo "\n[1/2] Building image via Cloud Build -> ${IMAGE}"
 gcloud builds submit --project "${PROJECT_ID}" --tag "${IMAGE}" .
 
 echo "\n[2/2] Deploying to Cloud Run"
 
+CLOUD_RUN_PORT=${CLOUD_RUN_PORT:-8000}
 DEPLOY_ARGS=(
   --project "${PROJECT_ID}"
   --region "${REGION}"
   --image "${IMAGE}"
   --platform managed
   --allow-unauthenticated
-  --port 8000
+  --port "${CLOUD_RUN_PORT}"
 )
 
 # Attach Cloud SQL if provided
 if [[ -n "${CLOUDSQL_INSTANCE:-}" ]]; then
   DEPLOY_ARGS+=(--add-cloudsql-instances "${CLOUDSQL_INSTANCE}")
+fi
+
+# Parse Secret Manager mappings, and avoid also setting those keys via env vars.
+declare -A _SECRET_ENV_KEYS=()
+if [[ -n "${CLOUD_RUN_SECRETS:-}" ]]; then
+  IFS=',' read -ra _secret_pairs <<< "${CLOUD_RUN_SECRETS}"
+  for _pair in "${_secret_pairs[@]}"; do
+    _key="${_pair%%=*}"
+    if [[ -n "${_key}" && "${_key}" != /* ]]; then
+      _SECRET_ENV_KEYS["${_key}"]=1
+    fi
+  done
+  DEPLOY_ARGS+=(--update-secrets "${CLOUD_RUN_SECRETS}")
 fi
 
 # Build env var list (only include if present)
@@ -70,19 +109,22 @@ ENV_VARS=(
 
 ENV_STR=""
 for key in "${ENV_VARS[@]}"; do
+  if [[ -n "${_SECRET_ENV_KEYS[$key]:-}" ]]; then
+    continue
+  fi
   val=${!key-}
   if [[ -n "${val}" ]]; then
-    if [[ -n "${ENV_STR}" ]]; then ENV_STR+="","; fi
+    if [[ -n "${ENV_STR}" ]]; then ENV_STR+=","; fi
     # shellcheck disable=SC2001
     clean=$(echo -n "${val}" | sed 's/[,]/\\,/g')
     ENV_STR+="${key}=${clean}"
   fi
 done
 
-if [[ -z "${ENV_STR}" ]]; then
-  echo "WARNING: No env vars passed. You likely need at least ADMIN_PASSWORD and SECRET_KEY." >&2
-else
-  DEPLOY_ARGS+=(--set-env-vars "${ENV_STR}")
+if [[ -n "${ENV_STR}" ]]; then
+  DEPLOY_ARGS+=(--update-env-vars "${ENV_STR}")
+elif [[ -z "${CLOUD_RUN_SECRETS:-}" ]]; then
+  echo "WARNING: No env vars/secrets passed. You likely need at least ADMIN_PASSWORD and SECRET_KEY." >&2
 fi
 
 gcloud run deploy "${SERVICE_NAME}" "${DEPLOY_ARGS[@]}"
@@ -102,11 +144,16 @@ if [[ "${RUN_MIGRATIONS:-0}" == "1" ]]; then
     --region "${REGION}"
     --image "${IMAGE}"
     --execute-now
-    --set-env-vars "${ENV_STR}"
     --command bash --args -lc,"alembic upgrade head"
   )
   if [[ -n "${CLOUDSQL_INSTANCE:-}" ]]; then
     JOB_ARGS+=(--add-cloudsql-instances "${CLOUDSQL_INSTANCE}")
+  fi
+  if [[ -n "${CLOUD_RUN_SECRETS:-}" ]]; then
+    JOB_ARGS+=(--update-secrets "${CLOUD_RUN_SECRETS}")
+  fi
+  if [[ -n "${ENV_STR}" ]]; then
+    JOB_ARGS+=(--update-env-vars "${ENV_STR}")
   fi
 
   # Create or update then execute

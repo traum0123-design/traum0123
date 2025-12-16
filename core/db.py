@@ -37,6 +37,18 @@ def _resolve_database_url() -> str:
     repo_db_path = (root / "payroll_portal" / "app.db").resolve()
     # Cloud Run sets K_SERVICE. Also check writability of the target directory.
     in_cloud_run = bool(os.environ.get("K_SERVICE") or os.environ.get("K_REVISION"))
+    allow_sqlite_in_cloud_run = str(os.environ.get("PAYROLL_ALLOW_SQLITE_IN_CLOUD_RUN", "")).strip().lower() in {
+        "1",
+        "true",
+        "yes",
+        "on",
+    }
+    if in_cloud_run and not allow_sqlite_in_cloud_run:
+        raise RuntimeError(
+            "DATABASE_URL is required in Cloud Run. "
+            "Set DATABASE_URL to a managed database (e.g., Cloud SQL) or set "
+            "PAYROLL_ALLOW_SQLITE_IN_CLOUD_RUN=1 to allow ephemeral SQLite (not recommended)."
+        )
     repo_writable = os.access(repo_db_path.parent, os.W_OK)
     if in_cloud_run or not repo_writable:
         tmp_db = Path("/tmp/app.db")
