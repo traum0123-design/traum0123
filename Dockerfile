@@ -13,7 +13,7 @@ RUN python -m venv /opt/venv \
 FROM node:20-alpine AS nodebuilder
 WORKDIR /build
 COPY . .
-RUN cd frontend && npm install && npm run build || true
+RUN cd frontend && npm install && npm run build
 
 FROM python:3.12-slim
 
@@ -37,7 +37,9 @@ COPY . .
 COPY --from=nodebuilder /build/payroll_portal/static/dist /app/payroll_portal/static/dist
 
 # Build hashed static assets for CSP-friendly caching (fallback if no Vite manifest)
-RUN [ -f payroll_portal/static/dist/manifest.json ] || python scripts/build_static.py || true
+RUN test -f payroll_portal/static/dist/manifest.json \
+    || test -f payroll_portal/static/dist/.vite/manifest.json \
+    || python scripts/build_static.py
 
 # Create unprivileged user and fix permissions
 RUN adduser --disabled-password --gecos "" --home /nonexistent --no-create-home --uid 10001 appuser \

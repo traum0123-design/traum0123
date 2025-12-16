@@ -2,16 +2,27 @@
 .git
 .gitignore
 .venv
+.venv_ci
 .pytest_cache
 __pycache__
 *.pyc
 *.pyo
 *.pyd
+*.egg-info
+build
+node_modules
 
 # Local databases and artifacts
 *.db
+*.db-shm
+*.db-wal
 *.sqlite3
+*.sqlite3-shm
+*.sqlite3-wal
 payroll_portal/*.db
+payroll_portal/.venv
+payroll_portal/#/
+payroll_portal/static/dist
 
 # Tests and docs not needed in runtime image
 tests
@@ -20,3 +31,6 @@ docs
 # Secrets / local overrides (set via env at deploy time)
 .env
 
+# Local scratch files
+.uvicorn.out
+*.bak

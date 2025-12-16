@@ -8,8 +8,12 @@ from pathlib import Path
 @lru_cache(maxsize=1)
 def _load_manifest() -> dict[str, str]:
     root = Path(__file__).resolve().parents[1] / "static"
-    manifest_path = root / "dist" / "manifest.json"
-    if not manifest_path.exists():
+    manifest_candidates = [
+        root / "dist" / "manifest.json",
+        root / "dist" / ".vite" / "manifest.json",
+    ]
+    manifest_path = next((p for p in manifest_candidates if p.exists()), None)
+    if not manifest_path:
         return {}
     try:
         data = json.loads(manifest_path.read_text(encoding="utf-8"))
