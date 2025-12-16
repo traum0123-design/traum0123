@@ -33,6 +33,8 @@ def rel_from_source(path: Path) -> str:
 
 
 def build() -> None:
+    if DIST_DIR.exists():
+        shutil.rmtree(DIST_DIR)
     DIST_DIR.mkdir(parents=True, exist_ok=True)
     manifest: dict[str, str] = {}
     for p in SOURCE_DIR.rglob("*"):
@@ -53,4 +55,3 @@ def build() -> None:
 
 if __name__ == "__main__":
     build()
-

@@ -7,7 +7,7 @@ export default defineConfig({
   build: {
     manifest: true,
     outDir: resolve(__dirname, '../payroll_portal/static/dist'),
-    emptyOutDir: false,
+    emptyOutDir: true,
     rollupOptions: {
       input: {
         'app.js': resolve(__dirname, '../payroll_portal/static/app.js'),
@@ -26,4 +26,3 @@ export default defineConfig({
     }
   }
 })
-

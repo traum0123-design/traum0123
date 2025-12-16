@@ -3,6 +3,7 @@ uvicorn[standard]
 sqlalchemy
 psycopg[binary]
 pydantic-settings
+python-dotenv
 python-multipart
 jinja2
 openpyxl

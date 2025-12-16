@@ -15,7 +15,17 @@ dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["."]
-exclude = ["tests*", "docs*", "alembic*", "payroll_portal*"]
+exclude = ["tests*", "docs*", "alembic*"]
+
+[tool.setuptools]
+include-package-data = true
+
+[tool.setuptools.package-data]
+payroll_portal = [
+  "templates/**/*.html",
+  "static/**/*",
+  "*.xlsx",
+]
 
 [tool.ruff]
 line-length = 120

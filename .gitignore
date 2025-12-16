@@ -13,3 +13,8 @@ __pycache__/
 payroll_portal/.venv/
 payroll_portal/#/
 payroll_portal/app.db
+.uvicorn.out
+*.bak
+=1
+headers.txt
+uvicorn
